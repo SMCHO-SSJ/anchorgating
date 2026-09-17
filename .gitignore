@@ -1,0 +1,6 @@
+*.fcs
+*.FCS
+*.lmd
+data/
+.DS_Store
+__pycache__/
