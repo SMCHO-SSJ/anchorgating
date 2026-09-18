@@ -66,3 +66,21 @@ python3 build.py        # src/ → index.html
 ## 인용 · 라이선스
 
 MIT License — `LICENSE` 참조. 논문에 사용했다면 저장소 주소와 버전(`VERSION`)을 적어 주세요.
+
+### 논문 Methods 예시 (Example Methods text)
+
+#### Software
+
+> Flow cytometry data were analyzed using Anchorgating (v0.9.1; https://smcho-ssj.github.io/anchorgating/), an open-source, browser-based flow cytometry gating and visualization tool that performs all computation client-side, with no data transmitted to a server. Anchorgating supports hierarchical (sequential) gating on dot, density, or contour plots; quadrant and histogram-region gating; linear, logarithmic, and biexponential axis transformation with spillover compensation; and gate propagation across paired samples within an experiment ("anchor" gating). Gated population statistics, publication-format figures, and gate-template files are exported directly from the tool.
+
+#### Apoptosis
+
+> For apoptosis analysis, cells were first gated on FSC-A × SSC-A to exclude debris, followed by FSC-H × FSC-W and SSC-H × SSC-W to exclude doublets. Live, early apoptotic, late apoptotic, and necrotic fractions were defined by quadrant gating on Annexin V-PE and 7-AAD within the singlet gate; quadrant boundaries were set on a representative control sample and propagated to all samples within the experiment. Population percentages were exported as CSV files, and bar graphs show mean ± SD (or SEM) from n = (replicate number) independent experiments, with statistical significance assessed by two-tailed Welch's t-test.
+
+#### Cell cycle analysis
+
+> For cell-cycle analysis, cells were gated on FSC-A × SSC-A, followed by PI-width × PI-area to exclude doublets. DNA content histograms (PI-A) were used to assign Sub-G1, G1, S, G2/M, and >4N fractions based on the corresponding histogram regions. Data are presented as mean ± SD (or SEM) from n = (replicate number) independent experiments.
+
+#### Reproducibility
+
+> Gating strategies and analysis parameters used to generate each figure are provided as Anchorgating gate-template JSON files (Supplementary Data).
