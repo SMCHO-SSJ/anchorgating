@@ -1,6 +1,6 @@
 "use strict";
 /* ============================================================
-   AnchorGate — core: utils, palettes, transforms, FCS parser, demo
+   Anchorgating — core: utils, palettes, transforms, FCS parser, demo
    ============================================================ */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
