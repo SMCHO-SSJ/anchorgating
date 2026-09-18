@@ -65,12 +65,12 @@ function prismSVG(M, W, H, opts = {}) {
       });
       for (const { se, top: tv } of errs) {
         const e = errOf(se); if (!(e > 0)) continue;
-        const ex = cx + bw * 0.28;
+        const ex = cx;
         o += `<path d="M${f(ex)} ${f(errMode === "both" ? Y(Math.max(0, tv - e)) : Y(tv))}V${f(Y(tv + e))}M${f(ex - cap)} ${f(Y(tv + e))}H${f(ex + cap)}${errMode === "both" ? `M${f(ex - cap)} ${f(Y(Math.max(0, tv - e)))}H${f(ex + cap)}` : ""}" stroke="#000" stroke-width="${f(lw * 1.1)}" fill="none"/>`;
       }
       if (b.dots) c.series.forEach((se, si) => se.per.forEach((p, pi) => {
         if (p.v == null) return; const cum = c.series.slice(0, si + 1).reduce((a, x) => a + (x.per[pi] && x.per[pi].v != null ? x.per[pi].v : 0), 0);
-        const off = (pi - (se.per.length - 1) / 2) * Math.min(bw * 0.12, 5 * u) - bw * 0.12;
+        const off = (pi - (se.per.length - 1) / 2) * Math.min(bw * 0.12, 5 * u);
         o += `<circle cx="${f(cx + off)}" cy="${f(Y(cum))}" r="${f(2.3 * u)}" fill="${pts === "open" ? "#fff" : "#000"}" stroke="#000" stroke-width="${f(lw * 0.8)}"/>`;
       }));
       if (b.stats && M.maxN > 1) errs.forEach(({ se, top: tv }, k) => {
