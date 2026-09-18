@@ -1,4 +1,4 @@
-# AnchorGate
+# Anchorgating
 
 브라우저에서 바로 여는 FACS 게이팅·그림 도구입니다. Apoptosis(Annexin V / 7-AAD·PI)와 cell cycle(PI DNA content) 분석에 맞춰 만들었고, 설치 없이 `index.html` 하나로 동작합니다.
 
