@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.1 — 2026-09-17
+- 이름을 AnchorGate → Anchorgating으로 변경 (제목, localStorage 키, 내보내기 파일명 접두사)
+
 ## 0.9.0 — 2026-09-17
 - Plot 탭: Bar plot | Histogram 전환
 - Histogram: 오프셋 겹침(겹침 정도 슬라이더) / 하나씩 보기, 곡선 스무딩, % of max·Count, 조건별 색·팔레트, 기준선 드래그, 구간 gate 경계, PNG·SVG·CSV
