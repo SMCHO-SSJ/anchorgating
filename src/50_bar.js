@@ -219,17 +219,17 @@ function saveBarCSV() {
 function saveStatsCSV() {
   const rows = [["replicate", "group", "sample", "file", "population", "parent", "events", "pct_parent", "pct_total"]];
   for (const r of S.reps) for (const s of repSamples(r)) { const tree = effTree(s); rows.push([r.name, s.group, s.name, s.fileName, "All events", "", s.n, "", 100]); for (const { node } of treeOrder(tree)) for (const k of nodeChildrenKeys(tree, node.id)) { const st = popStats(s, k); rows.push([r.name, s.group, s.name, s.fileName, popLabel(k), popLabel(node.parent), st ? st.count : "", st ? st.pParent.toFixed(3) : "", st ? st.pTotal.toFixed(3) : ""]); } }
-  saveFile(`anchorgate_stats_${stamp()}.csv`, rows.map((r) => r.map(csvCell).join(",")).join("\n"));
+  saveFile(`anchorgating_stats_${stamp()}.csv`, rows.map((r) => r.map(csvCell).join(",")).join("\n"));
 }
 function templateJSON() {
   return JSON.stringify({
-    app: "AnchorGate", version: 1, saved: new Date().toISOString(), names: S.names, quadNames: S.quadNames, axes: S.axes, numbering: S.style.numbering,
+    app: "Anchorgating", version: 1, saved: new Date().toISOString(), names: S.names, quadNames: S.quadNames, axes: S.axes, numbering: S.style.numbering,
     reps: S.reps.map((r) => ({ name: r.name, groups: repGroups(r).map((g) => ({ group: g, anchor: r.anchors[g] ? S.samples.get(r.anchors[g]).name : null, samples: groupSamples(r, g).map((s) => ({ name: s.name, follow: s.follow, tree: s.tree, overrides: s.overrides })) })) })),
     clipboard: S.clipboard,
   }, null, 1);
 }
 function applyTemplate(o) {
-  if (!o || o.app !== "AnchorGate") throw new Error("AnchorGate 템플릿 파일이 아닙니다");
+  if (!o || o.app !== "Anchorgating") throw new Error("Anchorgating 템플릿 파일이 아닙니다");
   pushUndo(); let matched = 0;
   Object.assign(S.names, o.names || {}); Object.assign(S.quadNames, o.quadNames || {}); if (o.axes) Object.assign(S.axes, o.axes);
   for (const k of Object.keys(S.names)) { const m = /^P(\d+)$/.exec(k); if (m) S.gateSeq = Math.max(S.gateSeq, +m[1]); const q = /^Q(\d+)$/.exec(k); if (q) S.quadSeq = Math.max(S.quadSeq, +q[1]); }
@@ -256,7 +256,7 @@ function exportMenu(btn) {
     { label: "Histogram 데이터 CSV", disabled: dis, title: t, onClick: saveHistCSV },
     { label: s ? `${s.name} gating 플롯 그림 저장…` : "gating 플롯 그림 저장…", disabled: dis || !s, title: t, onClick: () => openExport({ type: "chain", s }) },
     { sep: true }, { head: "Gate 템플릿" },
-    { label: "Gate 템플릿 저장 (JSON)", disabled: dis, title: t, onClick: () => saveFile(`anchorgate_template_${stamp()}.json`, templateJSON()) },
+    { label: "Gate 템플릿 저장 (JSON)", disabled: dis, title: t, onClick: () => saveFile(`anchorgating_template_${stamp()}.json`, templateJSON()) },
     { label: "Gate 템플릿 불러오기…", onClick: () => $("#tplInput").click() },
   ]);
 }
