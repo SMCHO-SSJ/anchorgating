@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="generator" content="Anchorgating 0.9.2">
+<meta name="generator" content="Anchorgating 0.9.3">
 <title>Anchorgating</title>
 <style>
 :root{
@@ -350,7 +350,7 @@ svg [data-rename]{cursor:text}
 
 <script>
 "use strict";
-const ANCHORGATING_VERSION = "0.9.2";
+const ANCHORGATING_VERSION = "0.9.3";
 "use strict";
 /* ============================================================
    Anchorgating — core: utils, palettes, transforms, FCS parser, demo
@@ -3406,6 +3406,9 @@ function bind() {
     }
   } catch (e) { DL = null; }
 })();
+
+/* Version label */
+try { const sm = document.querySelector('.brand small'); if (sm) { sm.textContent += ' · v' + ANCHORGATING_VERSION; sm.title = 'Anchorgating v' + ANCHORGATING_VERSION + ' (pre-validation release)'; } } catch (e) {}
 
 </script>
 </body>
