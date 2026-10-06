@@ -125,3 +125,6 @@ function bind() {
     }
   } catch (e) { DL = null; }
 })();
+
+/* Version label */
+try { const sm = document.querySelector('.brand small'); if (sm) { sm.textContent += ' · v' + ANCHORGATING_VERSION; sm.title = 'Anchorgating v' + ANCHORGATING_VERSION + ' (pre-validation release)'; } } catch (e) {}
