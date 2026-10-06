@@ -6,6 +6,8 @@ A zero-install, single-file web app for FACS gating and publication figures (apo
 
 > **데이터는 업로드되지 않습니다.** FCS 파일은 사용자의 브라우저 안에서만 읽고 계산합니다. 서버·외부 라이브러리 호출이 없습니다.
 
+> **검증 전 시험 버전입니다 (pre-validation release).** FlowJo 등 기존 소프트웨어와의 직접 비교 검증은 아직 수행하지 않았습니다. 논문·발표에 쓸 중요한 데이터는 기존 방법으로도 확인해 주세요. This version has not yet been validated against FlowJo.
+
 ![Apoptosis gating + histogram overlay](docs/screenshots/apoptosis_histogram_overlay.png)
 
 | Bar plot (Prism) | Cell cycle |
@@ -65,13 +67,13 @@ python3 build.py        # src/ → index.html
 
 ## 인용 · 라이선스
 
-MIT License — `LICENSE` 참조. 논문에 사용했다면 저장소 주소와 버전(`VERSION`)을 적어 주세요.
+MIT License — `LICENSE` 참조. 논문에 사용했다면 저장소 주소와 버전(`VERSION`, 앱 화면 상단에도 표시됩니다)을 적어 주세요. 인용 정보는 `CITATION.cff`에 있으며(저장소 우측의 "Cite this repository"), Zenodo DOI는 발급 후 여기에 추가할 예정입니다.
 
 ### 논문 Methods 예시 (Example Methods text)
 
 #### Software
 
-> Flow cytometry data were analyzed using Anchorgating (v0.9.1; https://smcho-ssj.github.io/anchorgating/), an open-source, browser-based flow cytometry gating and visualization tool that performs all computation client-side, with no data transmitted to a server. Anchorgating supports hierarchical (sequential) gating on dot, density, or contour plots; quadrant and histogram-region gating; linear, logarithmic, and biexponential axis transformation with spillover compensation; and gate propagation across paired samples within an experiment ("anchor" gating). Gated population statistics, publication-format figures, and gate-template files are exported directly from the tool.
+> Flow cytometry data were analyzed using Anchorgating (v0.9.3; https://smcho-ssj.github.io/anchorgating/), an open-source, browser-based flow cytometry gating and visualization tool that performs all computation client-side, with no data transmitted to a server. Anchorgating supports hierarchical (sequential) gating on dot, density, or contour plots; quadrant and histogram-region gating; linear, logarithmic, and biexponential axis transformation with spillover compensation; and gate propagation across paired samples within an experiment ("anchor" gating). Gated population statistics, publication-format figures, and gate-template files are exported directly from the tool.
 
 #### Apoptosis
 
