@@ -29,12 +29,16 @@ function gateChoices() {
 function barModel() {
   const b = S.bar; const groups = allGroups();
   if (!groups.includes(b.group)) b.group = (curSample() && curSample().group) || groups[0];
+  let sel = (b.groups || []).filter((g) => groups.includes(g));
+  if (!sel.length) sel = b.group != null ? [b.group] : [];
+  sel = groups.filter((g) => sel.includes(g)); b.groups = sel; if (!sel.includes(b.group)) b.group = sel[0];
   const gates = gateChoices(); if (!gates.find((g) => g.id === b.gid)) b.gid = (gates.find((g) => g.type === "rangeset") || gates.find((g) => g.type === "quad") || gates[gates.length - 1] || {}).id;
   const gate = gates.find((g) => g.id === b.gid);
-  const reps = (b.scope === "all" ? S.reps : [curRep()]).filter((r) => r && groupSamples(r, b.group).length);
+  const reps = (b.scope === "all" ? S.reps : [curRep()]).filter((r) => r && sel.some((g) => groupSamples(r, g).length));
   const cr = curRep(); const orderReps = reps.includes(cr) ? [cr, ...reps.filter((r) => r !== cr)] : reps;
-  const conds = []; for (const r of orderReps) for (const s of groupSamples(r, b.group)) if (!conds.includes(s.name)) conds.push(s.name);
-  const shown = conds.filter((c) => !b.exclude[b.group + "|" + c]);
+  const condsBy = {}; for (const g of sel) { const cs = []; for (const r of orderReps) for (const s of groupSamples(r, g)) if (!cs.includes(s.name)) cs.push(s.name); condsBy[g] = cs; }
+  const conds = [...new Set(sel.flatMap((g) => condsBy[g]))];
+  const pairs = sel.flatMap((g) => condsBy[g].filter((c) => !b.exclude[g + "|" + c]).map((c) => ({ g, c })));
   let series = [];
   if (gate && gate.type === "quad") {
     const regs = b.regions.filter((r) => REGIONS.includes(r)); if (!regs.length) b.regions = ["LR", "UR"];
@@ -46,13 +50,47 @@ function barModel() {
     series = b.sum ? [{ key: "sum", label: b.sumLabel || "합계", color: S.sumColor, parts: mem }] : mem.map((id) => ({ key: id, label: S.names[id] || id, color: rangeColor(id), parts: [id] }));
   } else if (gate) series = [{ key: gate.id, label: S.names[gate.id] || gate.id, color: gateColor(gate.id), parts: [gate.id] }];
   const value = (s, parts) => { let tot = 0; for (const k of parts) { const st = popStats(s, k); if (!st) return null; tot += b.basis === "total" ? st.pTotal : st.pParent; } return tot; };
-  const cells = shown.map((c) => ({ cond: c, series: series.map((se) => { const per = reps.map((r) => { const s = groupSamples(r, b.group).find((x) => x.name === c); return s ? { rep: r.name, v: value(s, se.parts) } : { rep: r.name, v: null }; }); return { ...se, per, ...summ(per.map((p) => p.v)) }; }) }));
-  if (!shown.includes(b.ref)) b.ref = shown.find((c) => /^(\+\+|ctrl|control|vehicle|dmso)$/i.test(c)) || shown[0];
-  const refCell = cells.find((c) => c.cond === b.ref);
-  for (const c of cells) for (const [i, se] of c.series.entries()) se.p = refCell && c.cond !== b.ref ? welchP(se.vals, refCell.series[i].vals) : NaN;
+  const cells = pairs.map(({ g, c }) => ({ group: g, cond: c, series: series.map((se) => { const per = reps.map((r) => { const s = groupSamples(r, g).find((x) => x.name === c); return s ? { rep: r.name, v: value(s, se.parts) } : { rep: r.name, v: null }; }); return { ...se, per, ...summ(per.map((p) => p.v)) }; }) }));
+  const shownU = [...new Set(pairs.map((p) => p.c))];
+  if (!shownU.includes(b.ref)) b.ref = shownU.find((c) => /^(\+\+|ctrl|control|vehicle|dmso)$/i.test(c)) || shownU[0];
+  for (const c of cells) { const refCell = cells.find((x) => x.group === c.group && x.cond === b.ref); for (const [i, se] of c.series.entries()) se.p = refCell && refCell !== c ? welchP(se.vals, refCell.series[i].vals) : NaN; }
   let parentLabel = "parent"; if (gate) parentLabel = popLabel(gate.parent);
-  return { b, gate, reps, conds, shown, series, cells, parentLabel, maxN: Math.max(0, ...cells.flatMap((c) => c.series.map((s) => s.n))) };
+  const maxN = Math.max(0, ...cells.flatMap((c) => c.series.map((s) => s.n)));
+  const groupsShown = sel.filter((g) => cells.some((c) => c.group === g));
+  // highest drawn value (bar + error + replicate points), used for the y-axis range and its warning
+  const errOf = (se) => (maxN > 1 ? (b.err === "sem" ? se.sem : se.sd) || 0 : 0);
+  const stackedM = b.layout === "stacked" && !b.sum && series.length > 1;
+  let dataMax = 0;
+  for (const c of cells) {
+    if (stackedM) { let acc = 0; c.series.forEach((se, si) => { acc += se.mean || 0; dataMax = Math.max(dataMax, acc + errOf(se)); if (b.dots) se.per.forEach((p, pi) => { const cum = c.series.slice(0, si + 1).reduce((a, x) => a + (x.per[pi] && x.per[pi].v != null ? x.per[pi].v : 0), 0); dataMax = Math.max(dataMax, cum); }); }); }
+    else for (const se of c.series) dataMax = Math.max(dataMax, (se.mean || 0) + errOf(se), ...(b.dots ? se.vals : [0]));
+  }
+  if (b.yMode === "manual" && !(isFinite(+b.yMax) && b.yMax !== null && b.yMax !== "")) { const t = Math.max(1, dataMax * 1.1); const st = niceStep(t, 5); b.yMax = Math.ceil(t / st - 1e-9) * st; if (!isFinite(+b.yMin)) b.yMin = 0; }
+  return { b, gate, reps, conds, condsBy, groupsSel: sel, groupsShown, multi: groupsShown.length > 1, shown: cells.map((c) => c.cond), shownU, series, cells, parentLabel, maxN, dataMax };
 }
+/* x positions: cells of the same group sit together, with a gap between groups */
+function barSlots(M, pw) {
+  const gap = M.multi ? 0.7 : 0; let units = 0; const pos = [];
+  M.cells.forEach((c, i) => { if (i && c.group !== M.cells[i - 1].group) units += gap; pos.push(units + 0.5); units += 1; });
+  const band = pw / Math.max(1, units); const cx = pos.map((p) => p * band);
+  const spans = M.groupsShown.map((g) => { const idx = M.cells.map((c, i) => (c.group === g ? i : -1)).filter((i) => i >= 0); return { g, x1: cx[idx[0]] - band / 2, x2: cx[idx[idx.length - 1]] + band / 2 }; });
+  return { band, cx, spans };
+}
+/* y range: automatic, or the user's min / max / tick step */
+function barYAxis(b, autoTop, autoStep) {
+  let y0 = 0, top = autoTop, step = autoStep, manual = false, invalid = false;
+  if (b.yMode === "manual") {
+    manual = true; const mn = +b.yMin, mx = +b.yMax;
+    y0 = isFinite(mn) && b.yMin !== null && b.yMin !== "" ? mn : 0;
+    if (isFinite(mx) && b.yMax !== null && b.yMax !== "" && mx > y0) top = mx; else { invalid = true; y0 = 0; }
+    const st = +b.yStep;
+    step = isFinite(st) && st > 0 && b.yStep !== null && b.yStep !== "" && (top - y0) / st <= 40 ? st : niceStep(top - y0, 5);
+  }
+  const ticks = []; const first = Math.ceil(y0 / step - 1e-9);
+  for (let i = first; i * step <= top + 1e-9 && ticks.length < 60; i++) ticks.push(+(i * step).toFixed(10));
+  return { y0, top, step, ticks, manual, invalid };
+}
+let BAR_CLIP_SEQ = 0;
 
 const REP_SHAPES = ["circle", "square", "triangle", "diamond", "circle-open"];
 function marker(shape, x, y, r) {
@@ -81,7 +119,7 @@ function bindBarTip(container, M) {
   svg.addEventListener("mousemove", (e) => {
     const t = e.target.closest("[data-c]"); if (!t) { tip.hidden = true; return; }
     const c = M.cells[+t.dataset.c]; const si = +t.dataset.s; const list = si < 0 ? c.series : [c.series[si]];
-    tip.innerHTML = `<b>${esc(c.cond)}</b>` + list.map((se) => `<div>${esc(se.label)} · 평균 ${fmtPct(se.mean, 2)}%${se.n > 1 ? ` · ${M.b.err.toUpperCase()} ${fmtPct(M.b.err === "sem" ? se.sem : se.sd, 2)}` : ""} · n=${se.n}${isFinite(se.p) ? ` · p=${se.p < 0.001 ? se.p.toExponential(1) : se.p.toFixed(3)}` : ""}</div><div style="opacity:.75">${se.per.map((p) => `${esc(p.rep)} ${p.v == null ? "–" : p.v.toFixed(2)}`).join(" / ")}</div>`).join("");
+    tip.innerHTML = `<b>${M.multi ? esc(c.group) + " · " : ""}${esc(c.cond)}</b>` + list.map((se) => `<div>${esc(se.label)} · 평균 ${fmtPct(se.mean, 2)}%${se.n > 1 ? ` · ${M.b.err.toUpperCase()} ${fmtPct(M.b.err === "sem" ? se.sem : se.sd, 2)}` : ""} · n=${se.n}${isFinite(se.p) ? ` · p=${se.p < 0.001 ? se.p.toExponential(1) : se.p.toFixed(3)}` : ""}</div><div style="opacity:.75">${se.per.map((p) => `${esc(p.rep)} ${p.v == null ? "–" : p.v.toFixed(2)}`).join(" / ")}</div>`).join("");
     tip.hidden = false; tip.style.left = Math.min(innerWidth - 270, e.clientX + 14) + "px"; tip.style.top = e.clientY + 14 + "px";
   });
   svg.addEventListener("mouseleave", () => (tip.hidden = true));
@@ -113,10 +151,10 @@ function bindBarTip(container, M) {
   svg.addEventListener("dblclick", (e) => {
     const t = e.target.closest("[data-rename]"); if (!t) return;
     const [kind, a, b2] = t.dataset.rename.split("|");
-    const cur = kind === "reg" ? regionName(a, b2) : kind === "sum" ? S.bar.sumLabel : kind === "gate" ? S.names[a] || a : M.shown[+a];
+    const cur = kind === "reg" ? regionName(a, b2) : kind === "sum" ? S.bar.sumLabel : kind === "gate" ? S.names[a] || a : (M.cells[+a] || {}).cond;
     tip.hidden = true;
     floatingInput(e.clientX - 30, e.clientY - 16, 180, cur, (v) => {
-      if (kind === "cond") return renameCondition(M.b.group, cur, v);
+      if (kind === "cond") return renameCondition((M.cells[+a] || {}).group, cur, v);
       pushUndo();
       if (kind === "reg") (S.quadNames[a] = S.quadNames[a] || {})[b2] = v; else if (kind === "sum") S.bar.sumLabel = v; else S.names[a] = v;
       fullRender(); if (BAR_MODAL) renderBarModal(); toast(`이름을 ‘${v}’(으)로 바꿨습니다`, "되돌리기", undo);
@@ -132,12 +170,12 @@ function renderBar() {
   chart.innerHTML = M.cells.length && M.series.length ? drawBar(M, W, 320) : `<div class="note" style="padding:30px 10px;text-align:center">표시할 데이터가 없습니다 — 사분면 gate와 조건을 확인하세요</div>`;
   if (M.cells.length && M.series.length) bindBarTip(chart, M);
   const tbl = box.querySelector(".bar-table"); tbl.innerHTML = "";
-  const t = h("table", { class: "st" }, h("thead", null, h("tr", null, h("th", null, "조건"), h("th", null, "항목"), h("th", { class: "r" }, "평균 %"), h("th", { class: "r" }, b.err.toUpperCase()), h("th", { class: "r" }, "n"), h("th", { class: "r" }, "p"), ...M.reps.map((r) => h("th", { class: "r" }, r.name)))));
+  const t = h("table", { class: "st" }, h("thead", null, h("tr", null, M.multi ? h("th", null, "그룹") : null, h("th", null, "조건"), h("th", null, "항목"), h("th", { class: "r" }, "평균 %"), h("th", { class: "r" }, b.err.toUpperCase()), h("th", { class: "r" }, "n"), h("th", { class: "r" }, "p"), ...M.reps.map((r) => h("th", { class: "r" }, r.name)))));
   const tb = h("tbody");
-  for (const c of M.cells) for (const se of c.series) tb.append(h("tr", null, h("td", null, c.cond), h("td", null, se.label), h("td", { class: "r num" }, fmtPct(se.mean, 2)), h("td", { class: "r num" }, se.n > 1 ? fmtPct(b.err === "sem" ? se.sem : se.sd, 2) : "–"), h("td", { class: "r num" }, String(se.n)), h("td", { class: "r num" }, isFinite(se.p) ? (se.p < 0.001 ? se.p.toExponential(1) : se.p.toFixed(3)) : c.cond === b.ref ? "기준" : "–"), ...se.per.map((p) => h("td", { class: "r num" }, p.v == null ? "–" : p.v.toFixed(2)))));
+  for (const c of M.cells) for (const se of c.series) tb.append(h("tr", null, M.multi ? h("td", null, c.group) : null, h("td", null, c.cond), h("td", null, se.label), h("td", { class: "r num" }, fmtPct(se.mean, 2)), h("td", { class: "r num" }, se.n > 1 ? fmtPct(b.err === "sem" ? se.sem : se.sd, 2) : "–"), h("td", { class: "r num" }, String(se.n)), h("td", { class: "r num" }, isFinite(se.p) ? (se.p < 0.001 ? se.p.toExponential(1) : se.p.toFixed(3)) : c.cond === b.ref ? "기준" : "–"), ...se.per.map((p) => h("td", { class: "r num" }, p.v == null ? "–" : p.v.toFixed(2)))));
   t.append(tb); tbl.append(t);
   const note = box.querySelector(".bar-note");
-  note.textContent = M.maxN <= 1 ? "n=1: 반복이 1개라 오차막대와 통계가 표시되지 않습니다. 반복 탭을 추가하고 ‘모든 반복’을 선택하세요." : `평균 ± ${b.err.toUpperCase()}, 점 = 각 반복의 값. 사분면을 드래그하면 즉시 다시 계산됩니다. 범례·조건 이름은 더블클릭해서 바꿀 수 있습니다.`;
+  note.textContent = (M.maxN <= 1 ? "n=1: 반복이 1개라 오차막대와 통계가 표시되지 않습니다. 반복 탭을 추가하고 ‘모든 반복’을 선택하세요." : `평균 ± ${b.err.toUpperCase()}, 점 = 각 반복의 값. 사분면을 드래그하면 즉시 다시 계산됩니다. 범례·조건 이름은 더블클릭해서 바꿀 수 있습니다.`) + (M.multi ? ` 통계(별표)는 각 그룹 안에서 ‘${b.ref}’와 비교합니다.` : "");
 }
 function barCtlSig(M) { return JSON.stringify(["bar", allGroups(), gateChoices().map((g) => g.id + g.type + (S.names[g.id] || "")), M.conds, S.reps.length, S.bar, S.quadNames, S.style.numbering, S.regionColors, S.rangeColors, S.sumColor, !!DL]); }
 function buildBarControls(box, M) {
@@ -148,11 +186,13 @@ function buildBarControls(box, M) {
   box.append(plotKindSeg(box));
   box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "데이터"), seg([["rep", `현재 반복 (${curRep() ? curRep().name : ""})`], ["all", `모든 반복 (${nReps})`]], "scope")));
   const groups = allGroups();
-  const gsel = h("select", { class: "sel-input", id: "barGroup" }, ...groups.map((g) => h("option", { value: g, selected: g === b.group ? "" : null }, g))); gsel.addEventListener("change", () => { b.group = gsel.value; re(); });
+  const gpills = h("div", { class: "pill-list", id: "barGroups" });
+  for (const g of groups) { const on = M.groupsSel.includes(g); const p = h("button", { class: "pill" + (on ? " on" : ""), "data-group": g }, g); p.addEventListener("click", () => { let cur = on ? M.groupsSel.filter((x) => x !== g) : [...M.groupsSel, g]; if (!cur.length) cur = [g]; b.groups = groups.filter((x) => cur.includes(x)); b.group = b.groups[0]; re(); }); gpills.append(p); }
   const gates = gateChoices();
   const psel = h("select", { class: "sel-input", id: "barGate", style: { flex: 1 } }, ...gates.map((g) => h("option", { value: g.id, selected: g.id === b.gid ? "" : null }, g.type === "rangeset" ? `세포주기 구간 · ${g.members.map((id) => S.names[id] || id).join(" / ")} (${popLabel(g.parent)} 기준)` : g.type === "quad" ? `${S.names[g.id] || g.id} — 사분면 (${popLabel(g.parent)} 기준)` : `${S.names[g.id] || g.id} (${popLabel(g.parent)} 기준)`)));
   psel.addEventListener("change", () => { b.gid = psel.value; re(); });
-  box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "그룹 · 지표"), h("div", { class: "f-row", style: { flexWrap: "nowrap" } }, gsel, psel)));
+  box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "그룹 (여러 개 선택 가능)"), gpills, M.groupsSel.length > 1 ? h("span", { class: "note" }, "선택한 그룹이 X축에 그룹별로 묶여 표시됩니다") : null));
+  box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "지표"), h("div", { class: "f-row", style: { flexWrap: "nowrap" } }, psel)));
   if (M.gate && M.gate.type === "rangeset") {
     const pills = h("div", { class: "pill-list" });
     for (const id of M.gate.members) { const on = (b.members || []).includes(id); const p = h("button", { class: "pill" + (on ? " on" : "") }, h("span", { class: "sw", style: { background: rangeColor(id) } }), S.names[id] || id); p.addEventListener("click", () => { const cur = b.members || []; b.members = on ? cur.filter((x) => x !== id) : [...cur, id]; if (!b.members.length) b.members = [id]; re(); }); pills.append(p); }
@@ -181,11 +221,26 @@ function buildBarControls(box, M) {
   }
   const dots = h("label", { class: "check" }, h("input", { type: "checkbox", id: "barDots", checked: b.dots ? "" : null }), "반복 점"); dots.querySelector("input").addEventListener("change", (e) => { b.dots = e.target.checked; re(); });
   const stats = h("label", { class: "check" }, h("input", { type: "checkbox", id: "barStats", checked: b.stats ? "" : null }), "통계 표시"); stats.querySelector("input").addEventListener("change", (e) => { b.stats = e.target.checked; re(); });
-  const ref = h("select", { class: "sel-input", id: "barRef", title: "통계 기준 조건" }, ...M.shown.map((c) => h("option", { value: c, selected: c === b.ref ? "" : null }, `기준: ${c}`))); ref.addEventListener("change", () => { b.ref = ref.value; re(); });
+  const ref = h("select", { class: "sel-input", id: "barRef", title: "통계 기준 조건" }, ...M.shownU.map((c) => h("option", { value: c, selected: c === b.ref ? "" : null }, `기준: ${c}`))); ref.addEventListener("change", () => { b.ref = ref.value; re(); });
   box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "오차 · 표시"), h("div", { class: "f-row" }, seg([["sd", "SD"], ["sem", "SEM"]], "err"), seg([["parent", "%Parent"], ["total", "%Total"]], "basis")), h("div", { class: "f-row" }, dots, stats, ref)));
-  const cp = h("div", { class: "pill-list" });
-  for (const c of M.conds) { const k = b.group + "|" + c; const on = !b.exclude[k]; const p = h("button", { class: "pill" + (on ? " on" : "") }, c); p.addEventListener("click", () => { if (on) b.exclude[k] = true; else delete b.exclude[k]; re(); }); cp.append(p); }
-  box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "포함할 조건"), cp));
+  const condField = h("div", { class: "field" }, h("div", { class: "f-label" }, "포함할 조건"));
+  for (const g of M.groupsSel) {
+    const cp = h("div", { class: "pill-list", "data-conds": g });
+    for (const c of M.condsBy[g] || []) { const k = g + "|" + c; const on = !b.exclude[k]; const p = h("button", { class: "pill" + (on ? " on" : "") }, c); p.addEventListener("click", () => { if (on) b.exclude[k] = true; else delete b.exclude[k]; re(); }); cp.append(p); }
+    if (M.groupsSel.length > 1) condField.append(h("span", { class: "note", style: { fontWeight: "600" } }, g));
+    condField.append(cp);
+  }
+  box.append(condField);
+  const yField = h("div", { class: "field" }, h("div", { class: "f-label" }, "Y축 범위"), seg([["auto", "자동"], ["manual", "직접 지정"]], "yMode"));
+  if (b.yMode === "manual") {
+    const num = (id, key, ph, title) => { const inp = h("input", { class: "txt-input num", id, type: "number", step: "any", value: b[key] == null ? "" : String(b[key]), placeholder: ph, title, style: { width: "84px" } }); inp.addEventListener("change", () => { const v = inp.value.trim(); b[key] = v === "" ? (key === "yMin" ? 0 : null) : +v; re(); }); return inp; };
+    yField.append(h("div", { class: "f-row" }, h("span", { class: "note" }, "최소"), num("barYMin", "yMin", "0", "Y축 최솟값"), h("span", { class: "note" }, "최대"), num("barYMax", "yMax", "", "Y축 최댓값"), h("span", { class: "note" }, "눈금 간격"), num("barYStep", "yStep", "자동", "비워 두면 자동")));
+    const mn = +b.yMin || 0, mx = +b.yMax;
+    if (!(isFinite(mx) && b.yMax !== null && mx > mn)) yField.append(h("span", { class: "note warn-text", id: "barYWarn" }, "최댓값은 최솟값보다 커야 합니다 — 지금은 자동 범위로 그립니다"));
+    else if (M.dataMax > mx + 1e-9) yField.append(h("span", { class: "note warn-text", id: "barYWarn" }, `데이터 최댓값 ${M.dataMax.toFixed(1)}이(가) Y축 최댓값 ${mx}보다 커서 일부 막대·오차막대·점이 잘립니다`));
+    if (mn > 0) yField.append(h("span", { class: "note warn-text" }, "최솟값이 0보다 크면 막대 아랫부분이 잘려, 막대 길이로 크기를 비교할 수 없게 됩니다"));
+  } else yField.append(h("span", { class: "note" }, "데이터에 맞춰 자동으로 정합니다"));
+  box.append(yField);
   const big = h("button", { class: "btn sm" }); big.append(ic("expand"), "크게 보기"); big.addEventListener("click", openBarModal);
   const figB = h("button", { class: "btn sm primary", disabled: DL ? null : "", title: DL ? "" : "이 보기에서는 파일 저장을 사용할 수 없습니다" }, "그림 저장 (mm·pt 지정)…"); figB.addEventListener("click", () => openExport({ type: "bar" }));
   const csvB = h("button", { class: "btn sm", disabled: DL ? null : "" }, "CSV"); csvB.addEventListener("click", () => saveBarCSV());
@@ -213,8 +268,8 @@ const stamp = () => new Date().toISOString().slice(0, 10);
 function csvCell(v) { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }
 function saveBarCSV() {
   const M = barModel(); const rows = [["group", "condition", "series", "replicate", "value_percent", "basis"]];
-  for (const c of M.cells) for (const se of c.series) { for (const p of se.per) rows.push([M.b.group, c.cond, se.label, p.rep, p.v == null ? "" : p.v.toFixed(4), M.b.basis]); rows.push([M.b.group, c.cond, se.label, "mean", se.mean.toFixed(4), M.b.basis]); rows.push([M.b.group, c.cond, se.label, M.b.err, (M.b.err === "sem" ? se.sem : se.sd).toFixed(4), M.b.basis]); }
-  saveFile(`barplot_${M.b.group}_${stamp()}.csv`, rows.map((r) => r.map(csvCell).join(",")).join("\n"));
+  for (const c of M.cells) for (const se of c.series) { for (const p of se.per) rows.push([c.group, c.cond, se.label, p.rep, p.v == null ? "" : p.v.toFixed(4), M.b.basis]); rows.push([c.group, c.cond, se.label, "mean", se.mean.toFixed(4), M.b.basis]); rows.push([c.group, c.cond, se.label, M.b.err, (M.b.err === "sem" ? se.sem : se.sd).toFixed(4), M.b.basis]); }
+  saveFile(`barplot_${M.groupsSel.join("+")}_${stamp()}.csv`, rows.map((r) => r.map(csvCell).join(",")).join("\n"));
 }
 function saveStatsCSV() {
   const rows = [["replicate", "group", "sample", "file", "population", "parent", "events", "pct_parent", "pct_total"]];

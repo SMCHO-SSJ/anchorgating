@@ -66,7 +66,7 @@ function switchRep(id) {
   S.ui.repId = id; const rep = curRep(); const ss = repSamples(rep);
   const pick = ss.find((s) => s.name === (curSample() || {}).name && s.group === (curSample() || {}).group) || ss[0];
   S.ui.cur = pick ? pick.id : null; S.ui.sel = new Set(pick ? [pick.id] : []);
-  if (S.bar.scope === "rep") S.bar.group = null;
+  if (S.bar.scope === "rep") { S.bar.group = null; S.bar.groups = null; }
   fullRender();
 }
 function deleteRep(r) {
@@ -147,6 +147,8 @@ function renameGroup(rep, g, v) {
   for (const s of groupSamples(rep, g)) s.group = v;
   rep.anchors[v] = rep.anchors[g]; delete rep.anchors[g];
   if (S.bar.group === g) S.bar.group = v;
+  if (S.bar.groups) S.bar.groups = S.bar.groups.map((x) => (x === g ? v : x));
+  for (const k of Object.keys(S.bar.exclude)) if (k.startsWith(g + "|")) S.bar.exclude[v + k.slice(g.length)] = true;
   fullRender();
 }
 function regroup(s, g) {

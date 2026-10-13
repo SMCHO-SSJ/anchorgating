@@ -6,12 +6,13 @@ const MM2PT = 72 / 25.4, MM2PX = 96 / 25.4;
 function barSVG(M, W, H, opts = {}) {
   const b = M.b; const fs = opts.fs || (opts.big ? 13 : 11); const u = fs / 11; const lw = opts.lw || 1;
   const longest = Math.max(0, ...M.shown.map((c) => c.length));
-  const rot = longest * fs * 0.56 > (W - 60 * u) / Math.max(1, M.shown.length) - 6 * u;
+  const SL = barSlots(M, W - 56 * u);
+  const rot = longest * fs * 0.56 > SL.band - 6 * u;
   const legendRows = 1 + (b.dots && M.reps.length > 1 && b.layout !== "stacked" ? 1 : 0);
   const stacked = b.layout === "stacked" && !b.sum && M.series.length > 1;
   const hasStats = b.stats && M.maxN > 1 && !stacked;
   const noteH = hasStats ? fs + 5 * u : 0;
-  const ml = 48 * u, mr = 8 * u, mt = 10 * u + legendRows * (fs + 7 * u), mb = (rot ? 14 * u + Math.min(120 * u, longest * fs * 0.5) : fs + 14 * u) + noteH;
+  const ml = 48 * u, mr = 8 * u, mt = 10 * u + legendRows * (fs + 7 * u), labA = rot ? (M.multi ? Math.min(14 * u + Math.min(120 * u, longest * fs * 0.5), fs * 0.9 + Math.max(0, ...M.cells.map((c) => [...c.cond].reduce((a, ch) => a + (ch.charCodeAt(0) < 128 ? 0.56 : 1.0), 0))) * fs * 0.616 + fs * 0.75) : 14 * u + Math.min(120 * u, longest * fs * 0.5)) : fs + 14 * u, grpH = M.multi ? fs * 1.9 : 0, mb = labA + grpH + noteH;
   const pw = W - ml - mr, ph = H - mt - mb;
   const errOf = (se) => (M.maxN > 1 ? (b.err === "sem" ? se.sem : se.sd) : 0);
   let ymax = 1;
@@ -21,15 +22,16 @@ function barSVG(M, W, H, opts = {}) {
   }
   ymax *= hasStats ? 1.18 : 1.06;
   if (stacked && b.basis === "parent" && ymax > 92 && ymax < 112) ymax = 100;
-  const step = niceStep(ymax, ph > 160 * u ? 6 : 4); ymax = Math.ceil(ymax / step - 1e-9) * step;
-  const Y = (v) => mt + ph - (v / ymax) * ph;
-  const band = pw / Math.max(1, M.cells.length); const inner = stacked || M.series.length === 1 ? 1 : M.series.length;
+  const step0 = niceStep(ymax, ph > 160 * u ? 6 : 4); const YA = barYAxis(b, Math.ceil(ymax / step0 - 1e-9) * step0, step0);
+  const y0 = YA.y0, top = YA.top;
+  const Y = (v) => mt + ph - ((v - y0) / (top - y0)) * ph;
+  const band = SL.band; const inner = stacked || M.series.length === 1 ? 1 : M.series.length;
   const bwid = Math.min((opts.big ? 64 : 40) * u, (band * 0.72) / inner);
   const f = (v) => +v.toFixed(2);
   const size = opts.mm ? `width="${opts.mm[0]}mm" height="${opts.mm[1]}mm"` : `width="${W}" height="${H}"`;
   let out = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(W)} ${f(H)}" ${size} font-family="Arial, Helvetica, sans-serif" role="img" aria-label="Bar plot">`;
   out += `<rect width="${f(W)}" height="${f(H)}" fill="#ffffff"/>`;
-  for (let v = 0; v <= ymax + 1e-9; v += step) { const y = f(Y(v)); out += `<line x1="${f(ml)}" x2="${f(W - mr)}" y1="${y}" y2="${y}" stroke="${v === 0 ? "#6b7380" : "#e3e6ea"}" stroke-width="${f(lw * (v === 0 ? 1 : 0.7))}"/><text x="${f(ml - 5 * u)}" y="${f(Y(v) + fs * 0.35)}" font-size="${f(fs)}" fill="#3a414b" text-anchor="end">${+v.toFixed(2)}</text>`; }
+  for (const v of YA.ticks) { const y = f(Y(v)); out += `<line x1="${f(ml)}" x2="${f(W - mr)}" y1="${y}" y2="${y}" stroke="${v === y0 ? "#6b7380" : "#e3e6ea"}" stroke-width="${f(lw * (v === y0 ? 1 : 0.7))}"/><text x="${f(ml - 5 * u)}" y="${f(Y(v) + fs * 0.35)}" font-size="${f(fs)}" fill="#3a414b" text-anchor="end">${+v.toFixed(2)}</text>`; }
   out += `<text transform="translate(${f(fs * 0.95)} ${f(mt + ph / 2)}) rotate(-90)" font-size="${f(fs)}" fill="#12151a" text-anchor="middle">${esc(`% of ${b.basis === "total" ? "total" : M.parentLabel}`)}</text>`;
   let lx = ml, ly = 8 * u; const sq = fs * 0.85;
   for (const se of M.series) {
@@ -40,8 +42,10 @@ function barSVG(M, W, H, opts = {}) {
   if (legendRows > 1) { lx = ml; ly += fs + 7 * u; M.reps.forEach((r, i) => { out += `<g fill="#12151a" stroke="#fff" stroke-width="${f(0.8 * lw)}">${marker(REP_SHAPES[i % 5], f(lx + 4 * u), f(ly + sq / 2), f(3.3 * u))}</g><text x="${f(lx + 11 * u)}" y="${f(ly + sq * 0.9)}" font-size="${f(fs * 0.9)}" fill="#5b6470">${esc(r.name)}</text>`; lx += 20 * u + r.name.length * fs * 0.55; }); }
   const rr = (x, y, w, hgt, fill, attrs, roundTop) => { if (hgt <= 0.3) return ""; const r = Math.min(2.5 * u, w / 2, hgt); if (!roundTop) return `<rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(hgt)}" fill="${fill}" ${attrs}/>`; return `<path d="M${f(x)} ${f(y + hgt)}V${f(y + r)}Q${f(x)} ${f(y)} ${f(x + r)} ${f(y)}H${f(x + w - r)}Q${f(x + w)} ${f(y)} ${f(x + w)} ${f(y + r)}V${f(y + hgt)}Z" fill="${fill}" ${attrs}/>`; };
   const cap = 3.5 * u, sw = f(lw * 1.1);
+  const clipId = "agclip" + ++BAR_CLIP_SEQ; let labs = "";
+  out += `<defs><clipPath id="${clipId}"><rect x="${f(ml)}" y="${f(mt)}" width="${f(pw)}" height="${f(ph)}"/></clipPath></defs><g clip-path="url(#${clipId})">`;
   M.cells.forEach((c, ci) => {
-    const cx = ml + band * ci + band / 2;
+    const cx = ml + SL.cx[ci];
     if (stacked) {
       let acc = 0; const x = cx - bwid / 2;
       c.series.forEach((se, si) => {
@@ -64,9 +68,14 @@ function barSVG(M, W, H, opts = {}) {
       });
     }
     const lab = esc(c.cond);
-    out += rot ? `<text transform="translate(${f(cx + 2 * u)} ${f(mt + ph + fs)}) rotate(-38)" font-size="${f(fs)}" fill="#12151a" text-anchor="end" data-rename="cond|${ci}">${lab}</text>` : `<text x="${f(cx)}" y="${f(mt + ph + fs + 5 * u)}" font-size="${f(fs)}" fill="#12151a" text-anchor="middle" data-rename="cond|${ci}">${lab}</text>`;
+    labs += rot ? `<text transform="translate(${f(cx + 2 * u)} ${f(mt + ph + fs)}) rotate(-38)" font-size="${f(fs)}" fill="#12151a" text-anchor="end" data-rename="cond|${ci}">${lab}</text>` : `<text x="${f(cx)}" y="${f(mt + ph + fs + 5 * u)}" font-size="${f(fs)}" fill="#12151a" text-anchor="middle" data-rename="cond|${ci}">${lab}</text>`;
   });
-  if (hasStats && M.b.ref) out += `<text x="${f(W - mr)}" y="${f(H - 3 * u)}" font-size="${f(Math.max(4, fs * 0.8))}" fill="#7f8793" text-anchor="end">vs ${esc(M.b.ref)} · Welch t-test</text>`;
+  out += `</g>` + labs;
+  if (M.multi) {
+    const yl = mt + ph + labA - fs * 0.2;
+    for (const sp of SL.spans) { const x1 = ml + sp.x1 + band * 0.08, x2 = ml + sp.x2 - band * 0.08; out += `<path d="M${f(x1)} ${f(yl)}H${f(x2)}" stroke="#12151a" stroke-width="${f(lw)}" fill="none"/><text x="${f((x1 + x2) / 2)}" y="${f(yl + fs * 1.25)}" font-size="${f(fs)}" font-weight="700" fill="#12151a" text-anchor="middle">${esc(sp.g)}</text>`; }
+  }
+  if (hasStats && M.b.ref) out += `<text x="${f(W - mr)}" y="${f(H - 3 * u)}" font-size="${f(Math.max(4, fs * 0.8))}" fill="#7f8793" text-anchor="end">vs ${esc(M.b.ref)}${M.multi ? " within each group" : ""} · Welch t-test</text>`;
   return out + "</svg>";
 }
 
@@ -144,7 +153,7 @@ async function exportPNG(target, o, out) {
     canvas = await new Promise((res, rej) => { const img = new Image(); img.onload = () => { const c = document.createElement("canvas"); c.width = out.px[0]; c.height = out.px[1]; c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); res(c); }; img.onerror = rej; img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(out.svg); });
   }
   const blob = await canvasToPNG(canvas, o.dpi);
-  const base = target.type === "hist" ? `histogram_${S.hist.group}_${S.hist.xp}` : target.type === "bar" ? `barplot_${S.bar.group}` : target.type === "chain" ? `${target.s.group}_${target.s.name}_gating` : `${target.s.group}_${target.s.name}_${popLabel(target.plot.parent)}`;
+  const base = target.type === "hist" ? `histogram_${S.hist.group}_${S.hist.xp}` : target.type === "bar" ? `barplot_${(S.bar.groups && S.bar.groups.length ? S.bar.groups : [S.bar.group]).join("+")}` : target.type === "chain" ? `${target.s.group}_${target.s.name}_gating` : `${target.s.group}_${target.s.name}_${popLabel(target.plot.parent)}`;
   const size = target.type === "bar" || target.type === "hist" ? `${o.w}x${o.h}mm` : `${o.w}mm`;
   saveFile(`${base}_${size}_${o.fs}pt_${o.dpi}dpi.png`.replace(/[\\/:*?"<>|]/g, "_"), blob);
 }
@@ -184,7 +193,7 @@ function openExport(target) {
     const png = h("button", { class: "btn primary", disabled: DL ? null : "" }, "PNG 저장");
     png.addEventListener("click", () => exportPNG(target, o, out).catch((e) => toast(`PNG를 만들지 못했습니다: ${e.message || e}`)));
     const row = h("div", { class: "f-row" }, png);
-    if (kind === "bar") { const sv = h("button", { class: "btn", disabled: DL ? null : "" }, "SVG 저장 (Illustrator 편집용)"); sv.addEventListener("click", () => saveFile((target.type === "hist" ? `histogram_${S.hist.group}_${S.hist.xp}` : `barplot_${S.bar.group}`) + `_${o.w}x${o.h}mm_${o.fs}pt.svg`.replace(/[\\/:*?"<>|]/g, "_"), out.svg)); row.append(sv); }
+    if (kind === "bar") { const sv = h("button", { class: "btn", disabled: DL ? null : "" }, "SVG 저장 (Illustrator 편집용)"); sv.addEventListener("click", () => saveFile((target.type === "hist" ? `histogram_${S.hist.group}_${S.hist.xp}` : `barplot_${(S.bar.groups && S.bar.groups.length ? S.bar.groups : [S.bar.group]).join("+")}`) + `_${o.w}x${o.h}mm_${o.fs}pt.svg`.replace(/[\\/:*?"<>|]/g, "_"), out.svg)); row.append(sv); }
     ctl.append(row,
       h("div", { class: "note", style: { lineHeight: "1.55" } }, "글자가 작아지는 이유는 크게 저장한 그림을 논문에서 줄이기 때문입니다. 여기서는 처음부터 figure에 들어갈 실제 크기(mm)로 그리고 글자·점·선을 pt로 지정합니다. 저장한 PNG를 줄이지 말고 100% 크기로 넣으면 지정한 pt 그대로 인쇄됩니다. 대부분의 저널은 최종 크기 기준 6–8 pt 글자, 300 dpi 이상(선·점 그림은 600 dpi 이상)을 권장하니 투고할 저널의 figure 가이드도 함께 확인하세요."));
     const prev = h("div", { class: "exp-preview" });

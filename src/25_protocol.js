@@ -109,7 +109,7 @@ function genDemoCellCycle(tube, rep, n) {
 function resetWorkspace() {
   for (const r of S.reps) for (const id of r.sampleIds) S.samples.delete(id);
   S.reps = []; S.names = {}; S.quadNames = {}; S.gateSeq = 0; S.quadSeq = 0; S.extraPlots = []; S.clipboard = null;
-  UNDO.length = 0; REDO.length = 0; S.bar.exclude = {}; S.hist.exclude = {}; S.hist.colors = {}; S.bar.gid = null; S.bar.members = null; S.ui.selPop = null; S.ui.gridKey = null;
+  UNDO.length = 0; REDO.length = 0; S.bar.exclude = {}; S.bar.groups = null; S.hist.exclude = {}; S.hist.colors = {}; S.bar.gid = null; S.bar.members = null; S.ui.selPop = null; S.ui.gridKey = null;
   TCACHE.clear();
 }
 function bootDemoCellCycle() {

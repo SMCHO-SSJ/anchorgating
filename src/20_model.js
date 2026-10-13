@@ -19,7 +19,7 @@ const S = {
   styleVer: 1,
   regionColors: { ...REGION_COLORS_DEFAULT },
   sumColor: "#4a3aa7",
-  bar: { scope: "all", group: null, gid: null, regions: ["LR", "UR"], sum: false, sumLabel: "Total apoptosis", layout: "grouped", err: "sd", dots: true, stats: true, ref: null, basis: "parent", exclude: {}, order: [], style: "prism", pfill: "color", psig: "stars", perr: "up", ppts: "filled", legendPos: "inTL", legendXY: null },
+  bar: { scope: "all", group: null, groups: null, yMode: "auto", yMin: 0, yMax: null, yStep: null, gid: null, regions: ["LR", "UR"], sum: false, sumLabel: "Total apoptosis", layout: "grouped", err: "sd", dots: true, stats: true, ref: null, basis: "parent", exclude: {}, order: [], style: "prism", pfill: "color", psig: "stars", perr: "up", ppts: "filled", legendPos: "inTL", legendXY: null },
   extraPlots: [],
   ui: { repId: null, cur: null, sel: new Set(), view: "chain", rTab: "bar", tool: null, selPop: null, gridKey: null, tile: 190, gridGroup: null },
   clipboard: null,

@@ -20,27 +20,33 @@ function prismSVG(M, W, H, opts = {}) {
   const rowW = nSer > 1 ? S_.reduce((a, se) => a + sq + 6 * u + labW(se) + 14 * u, 0) - 14 * u : 0;
   const outside = lpos === "outBR" || lpos === "outTR";
   const ml = 58 * u, mr = 10 * u + (outside ? legendW + 14 * u : 0), mt = 14 * u + (lpos === "top" ? rowH + 6 * u : 0);
-  const pw0 = W - ml - mr; const bandGuess = pw0 / Math.max(1, cells.length);
+  const pw0 = W - ml - mr; const SL = barSlots(M, pw0); const bandGuess = SL.band;
   const rot = longest * fs * 0.58 > bandGuess - 4 * u;
   const willNote = b.stats && M.maxN > 1;
-  const mb = (rot ? 18 * u + Math.min(130 * u, longest * fs * 0.45 + fs) : fs * 2.4) + (willNote ? fs * 1.1 : 0);
+  const labA0 = rot ? 18 * u + Math.min(130 * u, longest * fs * 0.45 + fs) : fs * 2.4; const grpH = M.multi ? fs * 1.9 : 0;
+  const textW = (t) => [...t].reduce((a, ch) => a + (ch.charCodeAt(0) < 128 ? 0.58 : 1.0), 0) * fs;
+  const rotExt = fs * 0.9 + Math.max(0, ...cells.map((c) => textW(c.cond))) * 0.707 + fs * 0.75;
+  const labA = M.multi && rot ? Math.min(labA0, rotExt) : labA0;
+  const mb = labA + grpH + (willNote ? fs * 1.1 : 0);
   const pw = pw0, ph = H - mt - mb;
   const errOf = (se) => (M.maxN > 1 ? (b.err === "sem" ? se.sem : se.sd) : 0);
   // significance pairs
-  const refIdx = cells.findIndex((c) => c.cond === b.ref);
+  // each cell is compared with the reference condition of its own group
   const comps = [];
-  if (b.stats && M.maxN > 1 && refIdx >= 0) cells.forEach((c, ci) => { if (ci === refIdx) return; c.series.forEach((se, si) => { if (isFinite(se.p)) comps.push({ ci, si, p: se.p }); }); });
+  if (b.stats && M.maxN > 1) cells.forEach((c, ci) => { const rci = cells.findIndex((x) => x.group === c.group && x.cond === b.ref); if (rci < 0 || ci === rci) return; c.series.forEach((se, si) => { if (isFinite(se.p)) comps.push({ ci, si, p: se.p, rci, g: c.group }); }); });
+  const perG = {}; for (const cp of comps) perG[cp.g] = (perG[cp.g] || 0) + 1; const maxPer = Math.max(0, ...Object.values(perG));
   let ymax = 1;
   if (stacked) for (const c of cells) { let acc = 0; c.series.forEach((se, si) => { acc += se.mean || 0; ymax = Math.max(ymax, acc + errOf(se)); if (b.dots) se.per.forEach((p, pi) => { const cum = c.series.slice(0, si + 1).reduce((a, x) => a + (x.per[pi] && x.per[pi].v != null ? x.per[pi].v : 0), 0); ymax = Math.max(ymax, cum); }); }); }
   else for (const c of cells) for (const se of c.series) ymax = Math.max(ymax, (se.mean || 0) + errOf(se), ...(b.dots ? se.vals : [0]));
-  const levels = stacked ? 0 : sigMode === "bracket" ? comps.length : comps.length ? 1 : 0;
+  const levels = stacked ? 0 : sigMode === "bracket" ? maxPer : comps.length ? 1 : 0;
   const sigGap = ymax * 0.11; let need = ymax * 1.06 + levels * sigGap + (levels ? ymax * 0.1 : ymax * 0.04);
   if (stacked && b.basis === "parent" && ymax > 94 && ymax <= 106) need = 100;
-  const step = niceStep(need, 5); const top = Math.ceil(need / step - 1e-9) * step;
-  const Y = (v) => mt + ph - (v / top) * ph;
-  const band = pw / Math.max(1, cells.length); const inner = stacked ? 1 : nSer;
+  const step0 = niceStep(need, 5); const YA = barYAxis(b, Math.ceil(need / step0 - 1e-9) * step0, step0);
+  const y0 = YA.y0, top = YA.top;
+  const Y = (v) => mt + ph - ((v - y0) / (top - y0)) * ph;
+  const band = SL.band; const inner = stacked ? 1 : nSer;
   const bw = Math.min((stacked ? 60 : 46) * u, (band * (stacked ? 0.6 : 0.7)) / inner);
-  const barX = (ci, si) => ml + band * ci + band / 2 - (bw * inner) / 2 + bw * (stacked ? 0 : si);
+  const barX = (ci, si) => ml + SL.cx[ci] - (bw * inner) / 2 + bw * (stacked ? 0 : si);
   const colorOf = (se, si) => fill === "gray" ? PRISM_GRAYS[si % PRISM_GRAYS.length] : fill === "outline" ? "#ffffff" : se.color;
   const strokeOf = (se) => fill === "outline" ? se.color : "#000000";
   let o = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(W)} ${f(H)}" ${opts.mm ? `width="${opts.mm[0]}mm" height="${opts.mm[1]}mm"` : `width="${f(W)}" height="${f(H)}"`} font-family="Arial, Helvetica, sans-serif" role="img" aria-label="Bar plot">`;
@@ -48,13 +54,15 @@ function prismSVG(M, W, H, opts = {}) {
   // y axis
   const axW = f(lw * 1.3), tick = 5 * u;
   o += `<path d="M${f(ml)} ${f(mt)}V${f(mt + ph)}H${f(ml + pw)}" stroke="#000" stroke-width="${axW}" fill="none" stroke-linecap="square"/>`;
-  for (let v = 0; v <= top + 1e-9; v += step) {
+  for (const v of YA.ticks) {
     const y = f(Y(v));
     o += `<line x1="${f(ml - tick)}" x2="${f(ml)}" y1="${y}" y2="${y}" stroke="#000" stroke-width="${axW}"/>`;
     o += `<text x="${f(ml - tick - 3 * u)}" y="${f(Y(v) + fs * 0.36)}" font-size="${f(fs)}" text-anchor="end" fill="#000">${+v.toFixed(2)}</text>`;
   }
   o += `<text transform="translate(${f(fs * 1.05)} ${f(mt + ph / 2)}) rotate(-90)" font-size="${f(fs * 1.08)}" font-weight="700" text-anchor="middle" fill="#000">${esc(`% of ${b.basis === "total" ? "total" : M.parentLabel}`)}</text>`;
-  // bars
+  // bars — data marks are clipped to the plot area so a user-set y range cuts them cleanly
+  const clipId = "agclip" + ++BAR_CLIP_SEQ; let labs = "";
+  o += `<defs><clipPath id="${clipId}"><rect x="${f(ml)}" y="${f(mt)}" width="${f(pw)}" height="${f(ph)}"/></clipPath></defs><g clip-path="url(#${clipId})">`;
   cells.forEach((c, ci) => {
     if (stacked) {
       const x = barX(ci, 0), cx = x + bw / 2, cap = bw * 0.18; let acc = 0; const errs = [];
@@ -75,11 +83,12 @@ function prismSVG(M, W, H, opts = {}) {
       }));
       if (b.stats && M.maxN > 1) errs.forEach(({ se, top: tv }, k) => {
         if (!isFinite(se.p)) return; const st = stars(se.p); const mid = tv - (se.mean || 0) / 2;
-        if ((se.mean || 0) / top * ph < fs * 0.9) return;
-        o += `<text x="${f(x + bw + 4 * u)}" y="${f(Y(mid) + fs * 0.36)}" font-size="${f(st === "ns" ? fs * 0.8 : fs * 1.05)}" fill="#000">${st}</text>`;
+        if ((se.mean || 0) / (top - y0) * ph < fs * 0.9) return;
+        if (mid < y0 || mid > top) return;
+        labs += `<text x="${f(x + bw + 4 * u)}" y="${f(Y(mid) + fs * 0.36)}" font-size="${f(st === "ns" ? fs * 0.8 : fs * 1.05)}" fill="#000">${st}</text>`;
         void k;
       });
-      o += `<rect x="${f(ml + band * ci)}" y="${f(mt)}" width="${f(band)}" height="${f(ph)}" fill="transparent" data-c="${ci}" data-s="-1"/>`;
+      o += `<rect x="${f(ml + SL.cx[ci] - band / 2)}" y="${f(mt)}" width="${f(band)}" height="${f(ph)}" fill="transparent" data-c="${ci}" data-s="-1"/>`;
     }
     if (!stacked) c.series.forEach((se, si) => {
       const x = barX(ci, si), v = se.mean; if (!isFinite(v)) return;
@@ -95,24 +104,33 @@ function prismSVG(M, W, H, opts = {}) {
         o += `<circle cx="${f(cx + off)}" cy="${f(Y(p.v))}" r="${f(2.6 * u)}" fill="${pts === "open" ? "#fff" : "#000"}" stroke="#000" stroke-width="${f(lw * 0.9)}"/>`;
       });
     });
-    const cx = ml + band * ci + band / 2;
-    o += rot
+    const cx = ml + SL.cx[ci];
+    labs += rot
       ? `<text transform="translate(${f(cx + fs * 0.3)} ${f(mt + ph + fs * 0.9)}) rotate(-45)" font-size="${f(fs)}" text-anchor="end" fill="#000" data-rename="cond|${ci}">${esc(c.cond)}</text>`
       : `<text x="${f(cx)}" y="${f(mt + ph + fs * 1.45)}" font-size="${f(fs)}" text-anchor="middle" fill="#000" data-rename="cond|${ci}">${esc(c.cond)}</text>`;
   });
+  o += `</g>` + labs;
+  // group labels under the condition labels when several groups are shown
+  if (M.multi) {
+    const yl = mt + ph + labA - fs * 0.35;
+    for (const sp of SL.spans) {
+      const x1 = ml + sp.x1 + band * 0.08, x2 = ml + sp.x2 - band * 0.08;
+      o += `<path d="M${f(x1)} ${f(yl)}H${f(x2)}" stroke="#000" stroke-width="${f(lw * 1.1)}" fill="none"/>`;
+      o += `<text x="${f((x1 + x2) / 2)}" y="${f(yl + fs * 1.25)}" font-size="${f(fs * 1.05)}" font-weight="700" text-anchor="middle" fill="#000">${esc(sp.g)}</text>`;
+    }
+  }
   // significance
   const topOf = (ci, si) => { const se = cells[ci].series[si]; return Math.max((se.mean || 0) + errOf(se), ...(b.dots ? se.vals : [0])); };
   if (sigMode === "bracket" && comps.length) {
-    let yv = ymax * 1.06;
-    const gap = sigGap;
-    comps.sort((a, c) => Math.abs(a.ci - refIdx) - Math.abs(c.ci - refIdx) || a.si - c.si);
-    for (const cp of comps) {
-      const x1 = barX(refIdx, cp.si) + bw / 2, x2 = barX(cp.ci, cp.si) + bw / 2; const y = Y(yv); const dt = 4 * u;
+    const gap = sigGap; const byG = {};
+    for (const cp of comps) (byG[cp.g] = byG[cp.g] || []).push(cp);
+    for (const g of Object.keys(byG)) { let yv = ymax * 1.06; byG[g].sort((a, c) => Math.abs(a.ci - a.rci) - Math.abs(c.ci - c.rci) || a.si - c.si); for (const cp of byG[g]) {
+      const x1 = barX(cp.rci, cp.si) + bw / 2, x2 = barX(cp.ci, cp.si) + bw / 2; const y = Y(yv); const dt = 4 * u;
       o += `<path d="M${f(x1)} ${f(y + dt)}V${f(y)}H${f(x2)}V${f(y + dt)}" stroke="#000" stroke-width="${f(lw * 1.1)}" fill="none"/>`;
       const st = stars(cp.p);
       o += `<text x="${f((x1 + x2) / 2)}" y="${f(y - 2.5 * u)}" font-size="${f(st === "ns" ? fs * 0.9 : fs * 1.15)}" text-anchor="middle" fill="#000">${st}</text>`;
       yv += gap;
-    }
+    } }
   } else if (sigMode === "stars" && !stacked) {
     for (const cp of comps) { const x = barX(cp.ci, cp.si) + bw / 2; const st = stars(cp.p); o += `<text x="${f(x)}" y="${f(Y(topOf(cp.ci, cp.si)) - 5 * u)}" font-size="${f(st === "ns" ? fs * 0.85 : fs * 1.15)}" text-anchor="middle" fill="#000">${st}</text>`; }
   }
@@ -137,6 +155,6 @@ function prismSVG(M, W, H, opts = {}) {
     o += `</g>`;
   }
   o = o.replace("<svg ", `<svg data-plot="${f(ml)},${f(mt)},${f(pw)},${f(ph)}" `);
-  if (comps.length) o += `<text x="${f(W - 4 * u)}" y="${f(H - 3 * u)}" font-size="${f(Math.max(4, fs * 0.72))}" fill="#555" text-anchor="end">vs ${esc(b.ref)} · Welch t-test</text>`;
+  if (comps.length) o += `<text x="${f(W - 4 * u)}" y="${f(H - 3 * u)}" font-size="${f(Math.max(4, fs * 0.72))}" fill="#555" text-anchor="end">vs ${esc(b.ref)}${M.multi ? " within each group" : ""} · Welch t-test</text>`;
   return o + "</svg>";
 }

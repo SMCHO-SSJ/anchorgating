@@ -44,7 +44,7 @@ async function loadFiles(fileList) {
   for (const g of groups) { const r = initGroupGates(rep, g); if (r) info.push(`${g}: 앵커 ${r.anchor.name}${r.fromRep ? ` (${r.fromRep} gate에서 시작)` : ""}`); }
   if (added.length) {
     const first = added.find((s) => !isAnchor(s)) || added[0]; S.ui.cur = first.id; S.ui.sel = new Set([first.id]);
-    S.bar.group = null; S.bar.gid = null;
+    S.bar.group = null; S.bar.groups = null; S.bar.gid = null;
   }
   fullRender();
   if (errors.length) toast(`${added.length}개 불러옴 · ${errors.length}개 실패: ${errors[0]}`);
