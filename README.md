@@ -31,7 +31,7 @@ A zero-install, single-file web app for FACS gating and publication figures (apo
 - **축** — 파라미터, linear / log / biexponential, 범위
 - **플롯 스타일** — FlowJo pseudocolor, 밀도, 등고선, 점 크기, 팔레트·사용자 색, 사분면·gate 이름 더블클릭 수정
 - **Plot 탭**
-  - *Bar plot* — Prism 스타일(나란히/누적), 평균 ± SD/SEM, 반복 점, Welch t-test 별표/브래킷, 범례 위치 드래그
+  - *Bar plot* — Prism 스타일(나란히/누적), 평균 ± SD/SEM, 반복 점, Welch t-test 별표/브래킷, 범례 위치 드래그, Y축 범위 직접 지정(최소·최대·눈금 간격), 여러 그룹을 한 그래프에 그룹별로 묶어 표시(통계는 그룹 안에서 비교)
   - *Histogram* — 오프셋 겹침(겹침 정도 조절) 또는 하나씩 보기, 곡선 스무딩, % of max / Count, 조건별 색, 기준선, 구간 gate 표시
 - **논문용 내보내기** — mm·pt 단위 크기, 300/600/1200 dpi PNG(dpi 메타데이터 포함), 편집 가능한 SVG, 통계·플롯 CSV
 
@@ -73,7 +73,7 @@ MIT License — `LICENSE` 참조. 논문에 사용했다면 저장소 주소와 
 
 #### Software
 
-> Flow cytometry data were analyzed using Anchorgating (v0.9.3; https://smcho-ssj.github.io/anchorgating/), an open-source, browser-based flow cytometry gating and visualization tool that performs all computation client-side, with no data transmitted to a server. Anchorgating supports hierarchical (sequential) gating on dot, density, or contour plots; quadrant and histogram-region gating; linear, logarithmic, and biexponential axis transformation with spillover compensation; and gate propagation across paired samples within an experiment ("anchor" gating). Gated population statistics, publication-format figures, and gate-template files are exported directly from the tool.
+> Flow cytometry data were analyzed using Anchorgating (v0.9.4; https://smcho-ssj.github.io/anchorgating/), an open-source, browser-based flow cytometry gating and visualization tool that performs all computation client-side, with no data transmitted to a server. Anchorgating supports hierarchical (sequential) gating on dot, density, or contour plots; quadrant and histogram-region gating; linear, logarithmic, and biexponential axis transformation with spillover compensation; and gate propagation across paired samples within an experiment ("anchor" gating). Gated population statistics, publication-format figures, and gate-template files are exported directly from the tool.
 
 #### Apoptosis
 
