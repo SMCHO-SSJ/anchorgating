@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="generator" content="Anchorgating 0.9.3">
+<meta name="generator" content="Anchorgating 0.9.4">
 <title>Anchorgating</title>
 <style>
 :root{
@@ -192,6 +192,7 @@ svg.i{width:16px; height:16px; flex:0 0 auto; stroke:currentColor; fill:none; st
 .chart-box{background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:6px; color:var(--paper-ink); position:relative}
 .chart-box svg{display:block; width:100%; height:auto}
 .note{font-size:12px; color:var(--muted)}
+.note.warn-text{color:var(--ovr); font-weight:600}
 table.st{width:100%; border-collapse:collapse; font-size:12px}
 table.st th{text-align:left; font-weight:700; color:var(--muted); font-size:11px; padding:5px 6px; border-bottom:1px solid var(--line); white-space:nowrap}
 table.st td{padding:4px 6px; border-bottom:1px solid var(--line); white-space:nowrap}
@@ -350,7 +351,7 @@ svg [data-rename]{cursor:text}
 
 <script>
 "use strict";
-const ANCHORGATING_VERSION = "0.9.3";
+const ANCHORGATING_VERSION = "0.9.4";
 "use strict";
 /* ============================================================
    Anchorgating — core: utils, palettes, transforms, FCS parser, demo
@@ -666,7 +667,7 @@ const S = {
   styleVer: 1,
   regionColors: { ...REGION_COLORS_DEFAULT },
   sumColor: "#4a3aa7",
-  bar: { scope: "all", group: null, gid: null, regions: ["LR", "UR"], sum: false, sumLabel: "Total apoptosis", layout: "grouped", err: "sd", dots: true, stats: true, ref: null, basis: "parent", exclude: {}, order: [], style: "prism", pfill: "color", psig: "stars", perr: "up", ppts: "filled", legendPos: "inTL", legendXY: null },
+  bar: { scope: "all", group: null, groups: null, yMode: "auto", yMin: 0, yMax: null, yStep: null, gid: null, regions: ["LR", "UR"], sum: false, sumLabel: "Total apoptosis", layout: "grouped", err: "sd", dots: true, stats: true, ref: null, basis: "parent", exclude: {}, order: [], style: "prism", pfill: "color", psig: "stars", perr: "up", ppts: "filled", legendPos: "inTL", legendXY: null },
   extraPlots: [],
   ui: { repId: null, cur: null, sel: new Set(), view: "chain", rTab: "bar", tool: null, selPop: null, gridKey: null, tile: 190, gridGroup: null },
   clipboard: null,
@@ -1112,7 +1113,7 @@ function genDemoCellCycle(tube, rep, n) {
 function resetWorkspace() {
   for (const r of S.reps) for (const id of r.sampleIds) S.samples.delete(id);
   S.reps = []; S.names = {}; S.quadNames = {}; S.gateSeq = 0; S.quadSeq = 0; S.extraPlots = []; S.clipboard = null;
-  UNDO.length = 0; REDO.length = 0; S.bar.exclude = {}; S.hist.exclude = {}; S.hist.colors = {}; S.bar.gid = null; S.bar.members = null; S.ui.selPop = null; S.ui.gridKey = null;
+  UNDO.length = 0; REDO.length = 0; S.bar.exclude = {}; S.bar.groups = null; S.hist.exclude = {}; S.hist.colors = {}; S.bar.gid = null; S.bar.members = null; S.ui.selPop = null; S.ui.gridKey = null;
   TCACHE.clear();
 }
 function bootDemoCellCycle() {
@@ -1774,7 +1775,7 @@ function switchRep(id) {
   S.ui.repId = id; const rep = curRep(); const ss = repSamples(rep);
   const pick = ss.find((s) => s.name === (curSample() || {}).name && s.group === (curSample() || {}).group) || ss[0];
   S.ui.cur = pick ? pick.id : null; S.ui.sel = new Set(pick ? [pick.id] : []);
-  if (S.bar.scope === "rep") S.bar.group = null;
+  if (S.bar.scope === "rep") { S.bar.group = null; S.bar.groups = null; }
   fullRender();
 }
 function deleteRep(r) {
@@ -1855,6 +1856,8 @@ function renameGroup(rep, g, v) {
   for (const s of groupSamples(rep, g)) s.group = v;
   rep.anchors[v] = rep.anchors[g]; delete rep.anchors[g];
   if (S.bar.group === g) S.bar.group = v;
+  if (S.bar.groups) S.bar.groups = S.bar.groups.map((x) => (x === g ? v : x));
+  for (const k of Object.keys(S.bar.exclude)) if (k.startsWith(g + "|")) S.bar.exclude[v + k.slice(g.length)] = true;
   fullRender();
 }
 function regroup(s, g) {
@@ -2385,12 +2388,16 @@ function gateChoices() {
 function barModel() {
   const b = S.bar; const groups = allGroups();
   if (!groups.includes(b.group)) b.group = (curSample() && curSample().group) || groups[0];
+  let sel = (b.groups || []).filter((g) => groups.includes(g));
+  if (!sel.length) sel = b.group != null ? [b.group] : [];
+  sel = groups.filter((g) => sel.includes(g)); b.groups = sel; if (!sel.includes(b.group)) b.group = sel[0];
   const gates = gateChoices(); if (!gates.find((g) => g.id === b.gid)) b.gid = (gates.find((g) => g.type === "rangeset") || gates.find((g) => g.type === "quad") || gates[gates.length - 1] || {}).id;
   const gate = gates.find((g) => g.id === b.gid);
-  const reps = (b.scope === "all" ? S.reps : [curRep()]).filter((r) => r && groupSamples(r, b.group).length);
+  const reps = (b.scope === "all" ? S.reps : [curRep()]).filter((r) => r && sel.some((g) => groupSamples(r, g).length));
   const cr = curRep(); const orderReps = reps.includes(cr) ? [cr, ...reps.filter((r) => r !== cr)] : reps;
-  const conds = []; for (const r of orderReps) for (const s of groupSamples(r, b.group)) if (!conds.includes(s.name)) conds.push(s.name);
-  const shown = conds.filter((c) => !b.exclude[b.group + "|" + c]);
+  const condsBy = {}; for (const g of sel) { const cs = []; for (const r of orderReps) for (const s of groupSamples(r, g)) if (!cs.includes(s.name)) cs.push(s.name); condsBy[g] = cs; }
+  const conds = [...new Set(sel.flatMap((g) => condsBy[g]))];
+  const pairs = sel.flatMap((g) => condsBy[g].filter((c) => !b.exclude[g + "|" + c]).map((c) => ({ g, c })));
   let series = [];
   if (gate && gate.type === "quad") {
     const regs = b.regions.filter((r) => REGIONS.includes(r)); if (!regs.length) b.regions = ["LR", "UR"];
@@ -2402,13 +2409,47 @@ function barModel() {
     series = b.sum ? [{ key: "sum", label: b.sumLabel || "합계", color: S.sumColor, parts: mem }] : mem.map((id) => ({ key: id, label: S.names[id] || id, color: rangeColor(id), parts: [id] }));
   } else if (gate) series = [{ key: gate.id, label: S.names[gate.id] || gate.id, color: gateColor(gate.id), parts: [gate.id] }];
   const value = (s, parts) => { let tot = 0; for (const k of parts) { const st = popStats(s, k); if (!st) return null; tot += b.basis === "total" ? st.pTotal : st.pParent; } return tot; };
-  const cells = shown.map((c) => ({ cond: c, series: series.map((se) => { const per = reps.map((r) => { const s = groupSamples(r, b.group).find((x) => x.name === c); return s ? { rep: r.name, v: value(s, se.parts) } : { rep: r.name, v: null }; }); return { ...se, per, ...summ(per.map((p) => p.v)) }; }) }));
-  if (!shown.includes(b.ref)) b.ref = shown.find((c) => /^(\+\+|ctrl|control|vehicle|dmso)$/i.test(c)) || shown[0];
-  const refCell = cells.find((c) => c.cond === b.ref);
-  for (const c of cells) for (const [i, se] of c.series.entries()) se.p = refCell && c.cond !== b.ref ? welchP(se.vals, refCell.series[i].vals) : NaN;
+  const cells = pairs.map(({ g, c }) => ({ group: g, cond: c, series: series.map((se) => { const per = reps.map((r) => { const s = groupSamples(r, g).find((x) => x.name === c); return s ? { rep: r.name, v: value(s, se.parts) } : { rep: r.name, v: null }; }); return { ...se, per, ...summ(per.map((p) => p.v)) }; }) }));
+  const shownU = [...new Set(pairs.map((p) => p.c))];
+  if (!shownU.includes(b.ref)) b.ref = shownU.find((c) => /^(\+\+|ctrl|control|vehicle|dmso)$/i.test(c)) || shownU[0];
+  for (const c of cells) { const refCell = cells.find((x) => x.group === c.group && x.cond === b.ref); for (const [i, se] of c.series.entries()) se.p = refCell && refCell !== c ? welchP(se.vals, refCell.series[i].vals) : NaN; }
   let parentLabel = "parent"; if (gate) parentLabel = popLabel(gate.parent);
-  return { b, gate, reps, conds, shown, series, cells, parentLabel, maxN: Math.max(0, ...cells.flatMap((c) => c.series.map((s) => s.n))) };
+  const maxN = Math.max(0, ...cells.flatMap((c) => c.series.map((s) => s.n)));
+  const groupsShown = sel.filter((g) => cells.some((c) => c.group === g));
+  // highest drawn value (bar + error + replicate points), used for the y-axis range and its warning
+  const errOf = (se) => (maxN > 1 ? (b.err === "sem" ? se.sem : se.sd) || 0 : 0);
+  const stackedM = b.layout === "stacked" && !b.sum && series.length > 1;
+  let dataMax = 0;
+  for (const c of cells) {
+    if (stackedM) { let acc = 0; c.series.forEach((se, si) => { acc += se.mean || 0; dataMax = Math.max(dataMax, acc + errOf(se)); if (b.dots) se.per.forEach((p, pi) => { const cum = c.series.slice(0, si + 1).reduce((a, x) => a + (x.per[pi] && x.per[pi].v != null ? x.per[pi].v : 0), 0); dataMax = Math.max(dataMax, cum); }); }); }
+    else for (const se of c.series) dataMax = Math.max(dataMax, (se.mean || 0) + errOf(se), ...(b.dots ? se.vals : [0]));
+  }
+  if (b.yMode === "manual" && !(isFinite(+b.yMax) && b.yMax !== null && b.yMax !== "")) { const t = Math.max(1, dataMax * 1.1); const st = niceStep(t, 5); b.yMax = Math.ceil(t / st - 1e-9) * st; if (!isFinite(+b.yMin)) b.yMin = 0; }
+  return { b, gate, reps, conds, condsBy, groupsSel: sel, groupsShown, multi: groupsShown.length > 1, shown: cells.map((c) => c.cond), shownU, series, cells, parentLabel, maxN, dataMax };
 }
+/* x positions: cells of the same group sit together, with a gap between groups */
+function barSlots(M, pw) {
+  const gap = M.multi ? 0.7 : 0; let units = 0; const pos = [];
+  M.cells.forEach((c, i) => { if (i && c.group !== M.cells[i - 1].group) units += gap; pos.push(units + 0.5); units += 1; });
+  const band = pw / Math.max(1, units); const cx = pos.map((p) => p * band);
+  const spans = M.groupsShown.map((g) => { const idx = M.cells.map((c, i) => (c.group === g ? i : -1)).filter((i) => i >= 0); return { g, x1: cx[idx[0]] - band / 2, x2: cx[idx[idx.length - 1]] + band / 2 }; });
+  return { band, cx, spans };
+}
+/* y range: automatic, or the user's min / max / tick step */
+function barYAxis(b, autoTop, autoStep) {
+  let y0 = 0, top = autoTop, step = autoStep, manual = false, invalid = false;
+  if (b.yMode === "manual") {
+    manual = true; const mn = +b.yMin, mx = +b.yMax;
+    y0 = isFinite(mn) && b.yMin !== null && b.yMin !== "" ? mn : 0;
+    if (isFinite(mx) && b.yMax !== null && b.yMax !== "" && mx > y0) top = mx; else { invalid = true; y0 = 0; }
+    const st = +b.yStep;
+    step = isFinite(st) && st > 0 && b.yStep !== null && b.yStep !== "" && (top - y0) / st <= 40 ? st : niceStep(top - y0, 5);
+  }
+  const ticks = []; const first = Math.ceil(y0 / step - 1e-9);
+  for (let i = first; i * step <= top + 1e-9 && ticks.length < 60; i++) ticks.push(+(i * step).toFixed(10));
+  return { y0, top, step, ticks, manual, invalid };
+}
+let BAR_CLIP_SEQ = 0;
 
 const REP_SHAPES = ["circle", "square", "triangle", "diamond", "circle-open"];
 function marker(shape, x, y, r) {
@@ -2437,7 +2478,7 @@ function bindBarTip(container, M) {
   svg.addEventListener("mousemove", (e) => {
     const t = e.target.closest("[data-c]"); if (!t) { tip.hidden = true; return; }
     const c = M.cells[+t.dataset.c]; const si = +t.dataset.s; const list = si < 0 ? c.series : [c.series[si]];
-    tip.innerHTML = `<b>${esc(c.cond)}</b>` + list.map((se) => `<div>${esc(se.label)} · 평균 ${fmtPct(se.mean, 2)}%${se.n > 1 ? ` · ${M.b.err.toUpperCase()} ${fmtPct(M.b.err === "sem" ? se.sem : se.sd, 2)}` : ""} · n=${se.n}${isFinite(se.p) ? ` · p=${se.p < 0.001 ? se.p.toExponential(1) : se.p.toFixed(3)}` : ""}</div><div style="opacity:.75">${se.per.map((p) => `${esc(p.rep)} ${p.v == null ? "–" : p.v.toFixed(2)}`).join(" / ")}</div>`).join("");
+    tip.innerHTML = `<b>${M.multi ? esc(c.group) + " · " : ""}${esc(c.cond)}</b>` + list.map((se) => `<div>${esc(se.label)} · 평균 ${fmtPct(se.mean, 2)}%${se.n > 1 ? ` · ${M.b.err.toUpperCase()} ${fmtPct(M.b.err === "sem" ? se.sem : se.sd, 2)}` : ""} · n=${se.n}${isFinite(se.p) ? ` · p=${se.p < 0.001 ? se.p.toExponential(1) : se.p.toFixed(3)}` : ""}</div><div style="opacity:.75">${se.per.map((p) => `${esc(p.rep)} ${p.v == null ? "–" : p.v.toFixed(2)}`).join(" / ")}</div>`).join("");
     tip.hidden = false; tip.style.left = Math.min(innerWidth - 270, e.clientX + 14) + "px"; tip.style.top = e.clientY + 14 + "px";
   });
   svg.addEventListener("mouseleave", () => (tip.hidden = true));
@@ -2469,10 +2510,10 @@ function bindBarTip(container, M) {
   svg.addEventListener("dblclick", (e) => {
     const t = e.target.closest("[data-rename]"); if (!t) return;
     const [kind, a, b2] = t.dataset.rename.split("|");
-    const cur = kind === "reg" ? regionName(a, b2) : kind === "sum" ? S.bar.sumLabel : kind === "gate" ? S.names[a] || a : M.shown[+a];
+    const cur = kind === "reg" ? regionName(a, b2) : kind === "sum" ? S.bar.sumLabel : kind === "gate" ? S.names[a] || a : (M.cells[+a] || {}).cond;
     tip.hidden = true;
     floatingInput(e.clientX - 30, e.clientY - 16, 180, cur, (v) => {
-      if (kind === "cond") return renameCondition(M.b.group, cur, v);
+      if (kind === "cond") return renameCondition((M.cells[+a] || {}).group, cur, v);
       pushUndo();
       if (kind === "reg") (S.quadNames[a] = S.quadNames[a] || {})[b2] = v; else if (kind === "sum") S.bar.sumLabel = v; else S.names[a] = v;
       fullRender(); if (BAR_MODAL) renderBarModal(); toast(`이름을 ‘${v}’(으)로 바꿨습니다`, "되돌리기", undo);
@@ -2488,12 +2529,12 @@ function renderBar() {
   chart.innerHTML = M.cells.length && M.series.length ? drawBar(M, W, 320) : `<div class="note" style="padding:30px 10px;text-align:center">표시할 데이터가 없습니다 — 사분면 gate와 조건을 확인하세요</div>`;
   if (M.cells.length && M.series.length) bindBarTip(chart, M);
   const tbl = box.querySelector(".bar-table"); tbl.innerHTML = "";
-  const t = h("table", { class: "st" }, h("thead", null, h("tr", null, h("th", null, "조건"), h("th", null, "항목"), h("th", { class: "r" }, "평균 %"), h("th", { class: "r" }, b.err.toUpperCase()), h("th", { class: "r" }, "n"), h("th", { class: "r" }, "p"), ...M.reps.map((r) => h("th", { class: "r" }, r.name)))));
+  const t = h("table", { class: "st" }, h("thead", null, h("tr", null, M.multi ? h("th", null, "그룹") : null, h("th", null, "조건"), h("th", null, "항목"), h("th", { class: "r" }, "평균 %"), h("th", { class: "r" }, b.err.toUpperCase()), h("th", { class: "r" }, "n"), h("th", { class: "r" }, "p"), ...M.reps.map((r) => h("th", { class: "r" }, r.name)))));
   const tb = h("tbody");
-  for (const c of M.cells) for (const se of c.series) tb.append(h("tr", null, h("td", null, c.cond), h("td", null, se.label), h("td", { class: "r num" }, fmtPct(se.mean, 2)), h("td", { class: "r num" }, se.n > 1 ? fmtPct(b.err === "sem" ? se.sem : se.sd, 2) : "–"), h("td", { class: "r num" }, String(se.n)), h("td", { class: "r num" }, isFinite(se.p) ? (se.p < 0.001 ? se.p.toExponential(1) : se.p.toFixed(3)) : c.cond === b.ref ? "기준" : "–"), ...se.per.map((p) => h("td", { class: "r num" }, p.v == null ? "–" : p.v.toFixed(2)))));
+  for (const c of M.cells) for (const se of c.series) tb.append(h("tr", null, M.multi ? h("td", null, c.group) : null, h("td", null, c.cond), h("td", null, se.label), h("td", { class: "r num" }, fmtPct(se.mean, 2)), h("td", { class: "r num" }, se.n > 1 ? fmtPct(b.err === "sem" ? se.sem : se.sd, 2) : "–"), h("td", { class: "r num" }, String(se.n)), h("td", { class: "r num" }, isFinite(se.p) ? (se.p < 0.001 ? se.p.toExponential(1) : se.p.toFixed(3)) : c.cond === b.ref ? "기준" : "–"), ...se.per.map((p) => h("td", { class: "r num" }, p.v == null ? "–" : p.v.toFixed(2)))));
   t.append(tb); tbl.append(t);
   const note = box.querySelector(".bar-note");
-  note.textContent = M.maxN <= 1 ? "n=1: 반복이 1개라 오차막대와 통계가 표시되지 않습니다. 반복 탭을 추가하고 ‘모든 반복’을 선택하세요." : `평균 ± ${b.err.toUpperCase()}, 점 = 각 반복의 값. 사분면을 드래그하면 즉시 다시 계산됩니다. 범례·조건 이름은 더블클릭해서 바꿀 수 있습니다.`;
+  note.textContent = (M.maxN <= 1 ? "n=1: 반복이 1개라 오차막대와 통계가 표시되지 않습니다. 반복 탭을 추가하고 ‘모든 반복’을 선택하세요." : `평균 ± ${b.err.toUpperCase()}, 점 = 각 반복의 값. 사분면을 드래그하면 즉시 다시 계산됩니다. 범례·조건 이름은 더블클릭해서 바꿀 수 있습니다.`) + (M.multi ? ` 통계(별표)는 각 그룹 안에서 ‘${b.ref}’와 비교합니다.` : "");
 }
 function barCtlSig(M) { return JSON.stringify(["bar", allGroups(), gateChoices().map((g) => g.id + g.type + (S.names[g.id] || "")), M.conds, S.reps.length, S.bar, S.quadNames, S.style.numbering, S.regionColors, S.rangeColors, S.sumColor, !!DL]); }
 function buildBarControls(box, M) {
@@ -2504,11 +2545,13 @@ function buildBarControls(box, M) {
   box.append(plotKindSeg(box));
   box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "데이터"), seg([["rep", `현재 반복 (${curRep() ? curRep().name : ""})`], ["all", `모든 반복 (${nReps})`]], "scope")));
   const groups = allGroups();
-  const gsel = h("select", { class: "sel-input", id: "barGroup" }, ...groups.map((g) => h("option", { value: g, selected: g === b.group ? "" : null }, g))); gsel.addEventListener("change", () => { b.group = gsel.value; re(); });
+  const gpills = h("div", { class: "pill-list", id: "barGroups" });
+  for (const g of groups) { const on = M.groupsSel.includes(g); const p = h("button", { class: "pill" + (on ? " on" : ""), "data-group": g }, g); p.addEventListener("click", () => { let cur = on ? M.groupsSel.filter((x) => x !== g) : [...M.groupsSel, g]; if (!cur.length) cur = [g]; b.groups = groups.filter((x) => cur.includes(x)); b.group = b.groups[0]; re(); }); gpills.append(p); }
   const gates = gateChoices();
   const psel = h("select", { class: "sel-input", id: "barGate", style: { flex: 1 } }, ...gates.map((g) => h("option", { value: g.id, selected: g.id === b.gid ? "" : null }, g.type === "rangeset" ? `세포주기 구간 · ${g.members.map((id) => S.names[id] || id).join(" / ")} (${popLabel(g.parent)} 기준)` : g.type === "quad" ? `${S.names[g.id] || g.id} — 사분면 (${popLabel(g.parent)} 기준)` : `${S.names[g.id] || g.id} (${popLabel(g.parent)} 기준)`)));
   psel.addEventListener("change", () => { b.gid = psel.value; re(); });
-  box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "그룹 · 지표"), h("div", { class: "f-row", style: { flexWrap: "nowrap" } }, gsel, psel)));
+  box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "그룹 (여러 개 선택 가능)"), gpills, M.groupsSel.length > 1 ? h("span", { class: "note" }, "선택한 그룹이 X축에 그룹별로 묶여 표시됩니다") : null));
+  box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "지표"), h("div", { class: "f-row", style: { flexWrap: "nowrap" } }, psel)));
   if (M.gate && M.gate.type === "rangeset") {
     const pills = h("div", { class: "pill-list" });
     for (const id of M.gate.members) { const on = (b.members || []).includes(id); const p = h("button", { class: "pill" + (on ? " on" : "") }, h("span", { class: "sw", style: { background: rangeColor(id) } }), S.names[id] || id); p.addEventListener("click", () => { const cur = b.members || []; b.members = on ? cur.filter((x) => x !== id) : [...cur, id]; if (!b.members.length) b.members = [id]; re(); }); pills.append(p); }
@@ -2537,11 +2580,26 @@ function buildBarControls(box, M) {
   }
   const dots = h("label", { class: "check" }, h("input", { type: "checkbox", id: "barDots", checked: b.dots ? "" : null }), "반복 점"); dots.querySelector("input").addEventListener("change", (e) => { b.dots = e.target.checked; re(); });
   const stats = h("label", { class: "check" }, h("input", { type: "checkbox", id: "barStats", checked: b.stats ? "" : null }), "통계 표시"); stats.querySelector("input").addEventListener("change", (e) => { b.stats = e.target.checked; re(); });
-  const ref = h("select", { class: "sel-input", id: "barRef", title: "통계 기준 조건" }, ...M.shown.map((c) => h("option", { value: c, selected: c === b.ref ? "" : null }, `기준: ${c}`))); ref.addEventListener("change", () => { b.ref = ref.value; re(); });
+  const ref = h("select", { class: "sel-input", id: "barRef", title: "통계 기준 조건" }, ...M.shownU.map((c) => h("option", { value: c, selected: c === b.ref ? "" : null }, `기준: ${c}`))); ref.addEventListener("change", () => { b.ref = ref.value; re(); });
   box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "오차 · 표시"), h("div", { class: "f-row" }, seg([["sd", "SD"], ["sem", "SEM"]], "err"), seg([["parent", "%Parent"], ["total", "%Total"]], "basis")), h("div", { class: "f-row" }, dots, stats, ref)));
-  const cp = h("div", { class: "pill-list" });
-  for (const c of M.conds) { const k = b.group + "|" + c; const on = !b.exclude[k]; const p = h("button", { class: "pill" + (on ? " on" : "") }, c); p.addEventListener("click", () => { if (on) b.exclude[k] = true; else delete b.exclude[k]; re(); }); cp.append(p); }
-  box.append(h("div", { class: "field" }, h("div", { class: "f-label" }, "포함할 조건"), cp));
+  const condField = h("div", { class: "field" }, h("div", { class: "f-label" }, "포함할 조건"));
+  for (const g of M.groupsSel) {
+    const cp = h("div", { class: "pill-list", "data-conds": g });
+    for (const c of M.condsBy[g] || []) { const k = g + "|" + c; const on = !b.exclude[k]; const p = h("button", { class: "pill" + (on ? " on" : "") }, c); p.addEventListener("click", () => { if (on) b.exclude[k] = true; else delete b.exclude[k]; re(); }); cp.append(p); }
+    if (M.groupsSel.length > 1) condField.append(h("span", { class: "note", style: { fontWeight: "600" } }, g));
+    condField.append(cp);
+  }
+  box.append(condField);
+  const yField = h("div", { class: "field" }, h("div", { class: "f-label" }, "Y축 범위"), seg([["auto", "자동"], ["manual", "직접 지정"]], "yMode"));
+  if (b.yMode === "manual") {
+    const num = (id, key, ph, title) => { const inp = h("input", { class: "txt-input num", id, type: "number", step: "any", value: b[key] == null ? "" : String(b[key]), placeholder: ph, title, style: { width: "84px" } }); inp.addEventListener("change", () => { const v = inp.value.trim(); b[key] = v === "" ? (key === "yMin" ? 0 : null) : +v; re(); }); return inp; };
+    yField.append(h("div", { class: "f-row" }, h("span", { class: "note" }, "최소"), num("barYMin", "yMin", "0", "Y축 최솟값"), h("span", { class: "note" }, "최대"), num("barYMax", "yMax", "", "Y축 최댓값"), h("span", { class: "note" }, "눈금 간격"), num("barYStep", "yStep", "자동", "비워 두면 자동")));
+    const mn = +b.yMin || 0, mx = +b.yMax;
+    if (!(isFinite(mx) && b.yMax !== null && mx > mn)) yField.append(h("span", { class: "note warn-text", id: "barYWarn" }, "최댓값은 최솟값보다 커야 합니다 — 지금은 자동 범위로 그립니다"));
+    else if (M.dataMax > mx + 1e-9) yField.append(h("span", { class: "note warn-text", id: "barYWarn" }, `데이터 최댓값 ${M.dataMax.toFixed(1)}이(가) Y축 최댓값 ${mx}보다 커서 일부 막대·오차막대·점이 잘립니다`));
+    if (mn > 0) yField.append(h("span", { class: "note warn-text" }, "최솟값이 0보다 크면 막대 아랫부분이 잘려, 막대 길이로 크기를 비교할 수 없게 됩니다"));
+  } else yField.append(h("span", { class: "note" }, "데이터에 맞춰 자동으로 정합니다"));
+  box.append(yField);
   const big = h("button", { class: "btn sm" }); big.append(ic("expand"), "크게 보기"); big.addEventListener("click", openBarModal);
   const figB = h("button", { class: "btn sm primary", disabled: DL ? null : "", title: DL ? "" : "이 보기에서는 파일 저장을 사용할 수 없습니다" }, "그림 저장 (mm·pt 지정)…"); figB.addEventListener("click", () => openExport({ type: "bar" }));
   const csvB = h("button", { class: "btn sm", disabled: DL ? null : "" }, "CSV"); csvB.addEventListener("click", () => saveBarCSV());
@@ -2569,8 +2627,8 @@ const stamp = () => new Date().toISOString().slice(0, 10);
 function csvCell(v) { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }
 function saveBarCSV() {
   const M = barModel(); const rows = [["group", "condition", "series", "replicate", "value_percent", "basis"]];
-  for (const c of M.cells) for (const se of c.series) { for (const p of se.per) rows.push([M.b.group, c.cond, se.label, p.rep, p.v == null ? "" : p.v.toFixed(4), M.b.basis]); rows.push([M.b.group, c.cond, se.label, "mean", se.mean.toFixed(4), M.b.basis]); rows.push([M.b.group, c.cond, se.label, M.b.err, (M.b.err === "sem" ? se.sem : se.sd).toFixed(4), M.b.basis]); }
-  saveFile(`barplot_${M.b.group}_${stamp()}.csv`, rows.map((r) => r.map(csvCell).join(",")).join("\n"));
+  for (const c of M.cells) for (const se of c.series) { for (const p of se.per) rows.push([c.group, c.cond, se.label, p.rep, p.v == null ? "" : p.v.toFixed(4), M.b.basis]); rows.push([c.group, c.cond, se.label, "mean", se.mean.toFixed(4), M.b.basis]); rows.push([c.group, c.cond, se.label, M.b.err, (M.b.err === "sem" ? se.sem : se.sd).toFixed(4), M.b.basis]); }
+  saveFile(`barplot_${M.groupsSel.join("+")}_${stamp()}.csv`, rows.map((r) => r.map(csvCell).join(",")).join("\n"));
 }
 function saveStatsCSV() {
   const rows = [["replicate", "group", "sample", "file", "population", "parent", "events", "pct_parent", "pct_total"]];
@@ -2625,12 +2683,13 @@ const MM2PT = 72 / 25.4, MM2PX = 96 / 25.4;
 function barSVG(M, W, H, opts = {}) {
   const b = M.b; const fs = opts.fs || (opts.big ? 13 : 11); const u = fs / 11; const lw = opts.lw || 1;
   const longest = Math.max(0, ...M.shown.map((c) => c.length));
-  const rot = longest * fs * 0.56 > (W - 60 * u) / Math.max(1, M.shown.length) - 6 * u;
+  const SL = barSlots(M, W - 56 * u);
+  const rot = longest * fs * 0.56 > SL.band - 6 * u;
   const legendRows = 1 + (b.dots && M.reps.length > 1 && b.layout !== "stacked" ? 1 : 0);
   const stacked = b.layout === "stacked" && !b.sum && M.series.length > 1;
   const hasStats = b.stats && M.maxN > 1 && !stacked;
   const noteH = hasStats ? fs + 5 * u : 0;
-  const ml = 48 * u, mr = 8 * u, mt = 10 * u + legendRows * (fs + 7 * u), mb = (rot ? 14 * u + Math.min(120 * u, longest * fs * 0.5) : fs + 14 * u) + noteH;
+  const ml = 48 * u, mr = 8 * u, mt = 10 * u + legendRows * (fs + 7 * u), labA = rot ? (M.multi ? Math.min(14 * u + Math.min(120 * u, longest * fs * 0.5), fs * 0.9 + Math.max(0, ...M.cells.map((c) => [...c.cond].reduce((a, ch) => a + (ch.charCodeAt(0) < 128 ? 0.56 : 1.0), 0))) * fs * 0.616 + fs * 0.75) : 14 * u + Math.min(120 * u, longest * fs * 0.5)) : fs + 14 * u, grpH = M.multi ? fs * 1.9 : 0, mb = labA + grpH + noteH;
   const pw = W - ml - mr, ph = H - mt - mb;
   const errOf = (se) => (M.maxN > 1 ? (b.err === "sem" ? se.sem : se.sd) : 0);
   let ymax = 1;
@@ -2640,15 +2699,16 @@ function barSVG(M, W, H, opts = {}) {
   }
   ymax *= hasStats ? 1.18 : 1.06;
   if (stacked && b.basis === "parent" && ymax > 92 && ymax < 112) ymax = 100;
-  const step = niceStep(ymax, ph > 160 * u ? 6 : 4); ymax = Math.ceil(ymax / step - 1e-9) * step;
-  const Y = (v) => mt + ph - (v / ymax) * ph;
-  const band = pw / Math.max(1, M.cells.length); const inner = stacked || M.series.length === 1 ? 1 : M.series.length;
+  const step0 = niceStep(ymax, ph > 160 * u ? 6 : 4); const YA = barYAxis(b, Math.ceil(ymax / step0 - 1e-9) * step0, step0);
+  const y0 = YA.y0, top = YA.top;
+  const Y = (v) => mt + ph - ((v - y0) / (top - y0)) * ph;
+  const band = SL.band; const inner = stacked || M.series.length === 1 ? 1 : M.series.length;
   const bwid = Math.min((opts.big ? 64 : 40) * u, (band * 0.72) / inner);
   const f = (v) => +v.toFixed(2);
   const size = opts.mm ? `width="${opts.mm[0]}mm" height="${opts.mm[1]}mm"` : `width="${W}" height="${H}"`;
   let out = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(W)} ${f(H)}" ${size} font-family="Arial, Helvetica, sans-serif" role="img" aria-label="Bar plot">`;
   out += `<rect width="${f(W)}" height="${f(H)}" fill="#ffffff"/>`;
-  for (let v = 0; v <= ymax + 1e-9; v += step) { const y = f(Y(v)); out += `<line x1="${f(ml)}" x2="${f(W - mr)}" y1="${y}" y2="${y}" stroke="${v === 0 ? "#6b7380" : "#e3e6ea"}" stroke-width="${f(lw * (v === 0 ? 1 : 0.7))}"/><text x="${f(ml - 5 * u)}" y="${f(Y(v) + fs * 0.35)}" font-size="${f(fs)}" fill="#3a414b" text-anchor="end">${+v.toFixed(2)}</text>`; }
+  for (const v of YA.ticks) { const y = f(Y(v)); out += `<line x1="${f(ml)}" x2="${f(W - mr)}" y1="${y}" y2="${y}" stroke="${v === y0 ? "#6b7380" : "#e3e6ea"}" stroke-width="${f(lw * (v === y0 ? 1 : 0.7))}"/><text x="${f(ml - 5 * u)}" y="${f(Y(v) + fs * 0.35)}" font-size="${f(fs)}" fill="#3a414b" text-anchor="end">${+v.toFixed(2)}</text>`; }
   out += `<text transform="translate(${f(fs * 0.95)} ${f(mt + ph / 2)}) rotate(-90)" font-size="${f(fs)}" fill="#12151a" text-anchor="middle">${esc(`% of ${b.basis === "total" ? "total" : M.parentLabel}`)}</text>`;
   let lx = ml, ly = 8 * u; const sq = fs * 0.85;
   for (const se of M.series) {
@@ -2659,8 +2719,10 @@ function barSVG(M, W, H, opts = {}) {
   if (legendRows > 1) { lx = ml; ly += fs + 7 * u; M.reps.forEach((r, i) => { out += `<g fill="#12151a" stroke="#fff" stroke-width="${f(0.8 * lw)}">${marker(REP_SHAPES[i % 5], f(lx + 4 * u), f(ly + sq / 2), f(3.3 * u))}</g><text x="${f(lx + 11 * u)}" y="${f(ly + sq * 0.9)}" font-size="${f(fs * 0.9)}" fill="#5b6470">${esc(r.name)}</text>`; lx += 20 * u + r.name.length * fs * 0.55; }); }
   const rr = (x, y, w, hgt, fill, attrs, roundTop) => { if (hgt <= 0.3) return ""; const r = Math.min(2.5 * u, w / 2, hgt); if (!roundTop) return `<rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(hgt)}" fill="${fill}" ${attrs}/>`; return `<path d="M${f(x)} ${f(y + hgt)}V${f(y + r)}Q${f(x)} ${f(y)} ${f(x + r)} ${f(y)}H${f(x + w - r)}Q${f(x + w)} ${f(y)} ${f(x + w)} ${f(y + r)}V${f(y + hgt)}Z" fill="${fill}" ${attrs}/>`; };
   const cap = 3.5 * u, sw = f(lw * 1.1);
+  const clipId = "agclip" + ++BAR_CLIP_SEQ; let labs = "";
+  out += `<defs><clipPath id="${clipId}"><rect x="${f(ml)}" y="${f(mt)}" width="${f(pw)}" height="${f(ph)}"/></clipPath></defs><g clip-path="url(#${clipId})">`;
   M.cells.forEach((c, ci) => {
-    const cx = ml + band * ci + band / 2;
+    const cx = ml + SL.cx[ci];
     if (stacked) {
       let acc = 0; const x = cx - bwid / 2;
       c.series.forEach((se, si) => {
@@ -2683,9 +2745,14 @@ function barSVG(M, W, H, opts = {}) {
       });
     }
     const lab = esc(c.cond);
-    out += rot ? `<text transform="translate(${f(cx + 2 * u)} ${f(mt + ph + fs)}) rotate(-38)" font-size="${f(fs)}" fill="#12151a" text-anchor="end" data-rename="cond|${ci}">${lab}</text>` : `<text x="${f(cx)}" y="${f(mt + ph + fs + 5 * u)}" font-size="${f(fs)}" fill="#12151a" text-anchor="middle" data-rename="cond|${ci}">${lab}</text>`;
+    labs += rot ? `<text transform="translate(${f(cx + 2 * u)} ${f(mt + ph + fs)}) rotate(-38)" font-size="${f(fs)}" fill="#12151a" text-anchor="end" data-rename="cond|${ci}">${lab}</text>` : `<text x="${f(cx)}" y="${f(mt + ph + fs + 5 * u)}" font-size="${f(fs)}" fill="#12151a" text-anchor="middle" data-rename="cond|${ci}">${lab}</text>`;
   });
-  if (hasStats && M.b.ref) out += `<text x="${f(W - mr)}" y="${f(H - 3 * u)}" font-size="${f(Math.max(4, fs * 0.8))}" fill="#7f8793" text-anchor="end">vs ${esc(M.b.ref)} · Welch t-test</text>`;
+  out += `</g>` + labs;
+  if (M.multi) {
+    const yl = mt + ph + labA - fs * 0.2;
+    for (const sp of SL.spans) { const x1 = ml + sp.x1 + band * 0.08, x2 = ml + sp.x2 - band * 0.08; out += `<path d="M${f(x1)} ${f(yl)}H${f(x2)}" stroke="#12151a" stroke-width="${f(lw)}" fill="none"/><text x="${f((x1 + x2) / 2)}" y="${f(yl + fs * 1.25)}" font-size="${f(fs)}" font-weight="700" fill="#12151a" text-anchor="middle">${esc(sp.g)}</text>`; }
+  }
+  if (hasStats && M.b.ref) out += `<text x="${f(W - mr)}" y="${f(H - 3 * u)}" font-size="${f(Math.max(4, fs * 0.8))}" fill="#7f8793" text-anchor="end">vs ${esc(M.b.ref)}${M.multi ? " within each group" : ""} · Welch t-test</text>`;
   return out + "</svg>";
 }
 
@@ -2763,7 +2830,7 @@ async function exportPNG(target, o, out) {
     canvas = await new Promise((res, rej) => { const img = new Image(); img.onload = () => { const c = document.createElement("canvas"); c.width = out.px[0]; c.height = out.px[1]; c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); res(c); }; img.onerror = rej; img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(out.svg); });
   }
   const blob = await canvasToPNG(canvas, o.dpi);
-  const base = target.type === "hist" ? `histogram_${S.hist.group}_${S.hist.xp}` : target.type === "bar" ? `barplot_${S.bar.group}` : target.type === "chain" ? `${target.s.group}_${target.s.name}_gating` : `${target.s.group}_${target.s.name}_${popLabel(target.plot.parent)}`;
+  const base = target.type === "hist" ? `histogram_${S.hist.group}_${S.hist.xp}` : target.type === "bar" ? `barplot_${(S.bar.groups && S.bar.groups.length ? S.bar.groups : [S.bar.group]).join("+")}` : target.type === "chain" ? `${target.s.group}_${target.s.name}_gating` : `${target.s.group}_${target.s.name}_${popLabel(target.plot.parent)}`;
   const size = target.type === "bar" || target.type === "hist" ? `${o.w}x${o.h}mm` : `${o.w}mm`;
   saveFile(`${base}_${size}_${o.fs}pt_${o.dpi}dpi.png`.replace(/[\\/:*?"<>|]/g, "_"), blob);
 }
@@ -2803,7 +2870,7 @@ function openExport(target) {
     const png = h("button", { class: "btn primary", disabled: DL ? null : "" }, "PNG 저장");
     png.addEventListener("click", () => exportPNG(target, o, out).catch((e) => toast(`PNG를 만들지 못했습니다: ${e.message || e}`)));
     const row = h("div", { class: "f-row" }, png);
-    if (kind === "bar") { const sv = h("button", { class: "btn", disabled: DL ? null : "" }, "SVG 저장 (Illustrator 편집용)"); sv.addEventListener("click", () => saveFile((target.type === "hist" ? `histogram_${S.hist.group}_${S.hist.xp}` : `barplot_${S.bar.group}`) + `_${o.w}x${o.h}mm_${o.fs}pt.svg`.replace(/[\\/:*?"<>|]/g, "_"), out.svg)); row.append(sv); }
+    if (kind === "bar") { const sv = h("button", { class: "btn", disabled: DL ? null : "" }, "SVG 저장 (Illustrator 편집용)"); sv.addEventListener("click", () => saveFile((target.type === "hist" ? `histogram_${S.hist.group}_${S.hist.xp}` : `barplot_${(S.bar.groups && S.bar.groups.length ? S.bar.groups : [S.bar.group]).join("+")}`) + `_${o.w}x${o.h}mm_${o.fs}pt.svg`.replace(/[\\/:*?"<>|]/g, "_"), out.svg)); row.append(sv); }
     ctl.append(row,
       h("div", { class: "note", style: { lineHeight: "1.55" } }, "글자가 작아지는 이유는 크게 저장한 그림을 논문에서 줄이기 때문입니다. 여기서는 처음부터 figure에 들어갈 실제 크기(mm)로 그리고 글자·점·선을 pt로 지정합니다. 저장한 PNG를 줄이지 말고 100% 크기로 넣으면 지정한 pt 그대로 인쇄됩니다. 대부분의 저널은 최종 크기 기준 6–8 pt 글자, 300 dpi 이상(선·점 그림은 600 dpi 이상)을 권장하니 투고할 저널의 figure 가이드도 함께 확인하세요."));
     const prev = h("div", { class: "exp-preview" });
@@ -3158,27 +3225,33 @@ function prismSVG(M, W, H, opts = {}) {
   const rowW = nSer > 1 ? S_.reduce((a, se) => a + sq + 6 * u + labW(se) + 14 * u, 0) - 14 * u : 0;
   const outside = lpos === "outBR" || lpos === "outTR";
   const ml = 58 * u, mr = 10 * u + (outside ? legendW + 14 * u : 0), mt = 14 * u + (lpos === "top" ? rowH + 6 * u : 0);
-  const pw0 = W - ml - mr; const bandGuess = pw0 / Math.max(1, cells.length);
+  const pw0 = W - ml - mr; const SL = barSlots(M, pw0); const bandGuess = SL.band;
   const rot = longest * fs * 0.58 > bandGuess - 4 * u;
   const willNote = b.stats && M.maxN > 1;
-  const mb = (rot ? 18 * u + Math.min(130 * u, longest * fs * 0.45 + fs) : fs * 2.4) + (willNote ? fs * 1.1 : 0);
+  const labA0 = rot ? 18 * u + Math.min(130 * u, longest * fs * 0.45 + fs) : fs * 2.4; const grpH = M.multi ? fs * 1.9 : 0;
+  const textW = (t) => [...t].reduce((a, ch) => a + (ch.charCodeAt(0) < 128 ? 0.58 : 1.0), 0) * fs;
+  const rotExt = fs * 0.9 + Math.max(0, ...cells.map((c) => textW(c.cond))) * 0.707 + fs * 0.75;
+  const labA = M.multi && rot ? Math.min(labA0, rotExt) : labA0;
+  const mb = labA + grpH + (willNote ? fs * 1.1 : 0);
   const pw = pw0, ph = H - mt - mb;
   const errOf = (se) => (M.maxN > 1 ? (b.err === "sem" ? se.sem : se.sd) : 0);
   // significance pairs
-  const refIdx = cells.findIndex((c) => c.cond === b.ref);
+  // each cell is compared with the reference condition of its own group
   const comps = [];
-  if (b.stats && M.maxN > 1 && refIdx >= 0) cells.forEach((c, ci) => { if (ci === refIdx) return; c.series.forEach((se, si) => { if (isFinite(se.p)) comps.push({ ci, si, p: se.p }); }); });
+  if (b.stats && M.maxN > 1) cells.forEach((c, ci) => { const rci = cells.findIndex((x) => x.group === c.group && x.cond === b.ref); if (rci < 0 || ci === rci) return; c.series.forEach((se, si) => { if (isFinite(se.p)) comps.push({ ci, si, p: se.p, rci, g: c.group }); }); });
+  const perG = {}; for (const cp of comps) perG[cp.g] = (perG[cp.g] || 0) + 1; const maxPer = Math.max(0, ...Object.values(perG));
   let ymax = 1;
   if (stacked) for (const c of cells) { let acc = 0; c.series.forEach((se, si) => { acc += se.mean || 0; ymax = Math.max(ymax, acc + errOf(se)); if (b.dots) se.per.forEach((p, pi) => { const cum = c.series.slice(0, si + 1).reduce((a, x) => a + (x.per[pi] && x.per[pi].v != null ? x.per[pi].v : 0), 0); ymax = Math.max(ymax, cum); }); }); }
   else for (const c of cells) for (const se of c.series) ymax = Math.max(ymax, (se.mean || 0) + errOf(se), ...(b.dots ? se.vals : [0]));
-  const levels = stacked ? 0 : sigMode === "bracket" ? comps.length : comps.length ? 1 : 0;
+  const levels = stacked ? 0 : sigMode === "bracket" ? maxPer : comps.length ? 1 : 0;
   const sigGap = ymax * 0.11; let need = ymax * 1.06 + levels * sigGap + (levels ? ymax * 0.1 : ymax * 0.04);
   if (stacked && b.basis === "parent" && ymax > 94 && ymax <= 106) need = 100;
-  const step = niceStep(need, 5); const top = Math.ceil(need / step - 1e-9) * step;
-  const Y = (v) => mt + ph - (v / top) * ph;
-  const band = pw / Math.max(1, cells.length); const inner = stacked ? 1 : nSer;
+  const step0 = niceStep(need, 5); const YA = barYAxis(b, Math.ceil(need / step0 - 1e-9) * step0, step0);
+  const y0 = YA.y0, top = YA.top;
+  const Y = (v) => mt + ph - ((v - y0) / (top - y0)) * ph;
+  const band = SL.band; const inner = stacked ? 1 : nSer;
   const bw = Math.min((stacked ? 60 : 46) * u, (band * (stacked ? 0.6 : 0.7)) / inner);
-  const barX = (ci, si) => ml + band * ci + band / 2 - (bw * inner) / 2 + bw * (stacked ? 0 : si);
+  const barX = (ci, si) => ml + SL.cx[ci] - (bw * inner) / 2 + bw * (stacked ? 0 : si);
   const colorOf = (se, si) => fill === "gray" ? PRISM_GRAYS[si % PRISM_GRAYS.length] : fill === "outline" ? "#ffffff" : se.color;
   const strokeOf = (se) => fill === "outline" ? se.color : "#000000";
   let o = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(W)} ${f(H)}" ${opts.mm ? `width="${opts.mm[0]}mm" height="${opts.mm[1]}mm"` : `width="${f(W)}" height="${f(H)}"`} font-family="Arial, Helvetica, sans-serif" role="img" aria-label="Bar plot">`;
@@ -3186,13 +3259,15 @@ function prismSVG(M, W, H, opts = {}) {
   // y axis
   const axW = f(lw * 1.3), tick = 5 * u;
   o += `<path d="M${f(ml)} ${f(mt)}V${f(mt + ph)}H${f(ml + pw)}" stroke="#000" stroke-width="${axW}" fill="none" stroke-linecap="square"/>`;
-  for (let v = 0; v <= top + 1e-9; v += step) {
+  for (const v of YA.ticks) {
     const y = f(Y(v));
     o += `<line x1="${f(ml - tick)}" x2="${f(ml)}" y1="${y}" y2="${y}" stroke="#000" stroke-width="${axW}"/>`;
     o += `<text x="${f(ml - tick - 3 * u)}" y="${f(Y(v) + fs * 0.36)}" font-size="${f(fs)}" text-anchor="end" fill="#000">${+v.toFixed(2)}</text>`;
   }
   o += `<text transform="translate(${f(fs * 1.05)} ${f(mt + ph / 2)}) rotate(-90)" font-size="${f(fs * 1.08)}" font-weight="700" text-anchor="middle" fill="#000">${esc(`% of ${b.basis === "total" ? "total" : M.parentLabel}`)}</text>`;
-  // bars
+  // bars — data marks are clipped to the plot area so a user-set y range cuts them cleanly
+  const clipId = "agclip" + ++BAR_CLIP_SEQ; let labs = "";
+  o += `<defs><clipPath id="${clipId}"><rect x="${f(ml)}" y="${f(mt)}" width="${f(pw)}" height="${f(ph)}"/></clipPath></defs><g clip-path="url(#${clipId})">`;
   cells.forEach((c, ci) => {
     if (stacked) {
       const x = barX(ci, 0), cx = x + bw / 2, cap = bw * 0.18; let acc = 0; const errs = [];
@@ -3213,11 +3288,12 @@ function prismSVG(M, W, H, opts = {}) {
       }));
       if (b.stats && M.maxN > 1) errs.forEach(({ se, top: tv }, k) => {
         if (!isFinite(se.p)) return; const st = stars(se.p); const mid = tv - (se.mean || 0) / 2;
-        if ((se.mean || 0) / top * ph < fs * 0.9) return;
-        o += `<text x="${f(x + bw + 4 * u)}" y="${f(Y(mid) + fs * 0.36)}" font-size="${f(st === "ns" ? fs * 0.8 : fs * 1.05)}" fill="#000">${st}</text>`;
+        if ((se.mean || 0) / (top - y0) * ph < fs * 0.9) return;
+        if (mid < y0 || mid > top) return;
+        labs += `<text x="${f(x + bw + 4 * u)}" y="${f(Y(mid) + fs * 0.36)}" font-size="${f(st === "ns" ? fs * 0.8 : fs * 1.05)}" fill="#000">${st}</text>`;
         void k;
       });
-      o += `<rect x="${f(ml + band * ci)}" y="${f(mt)}" width="${f(band)}" height="${f(ph)}" fill="transparent" data-c="${ci}" data-s="-1"/>`;
+      o += `<rect x="${f(ml + SL.cx[ci] - band / 2)}" y="${f(mt)}" width="${f(band)}" height="${f(ph)}" fill="transparent" data-c="${ci}" data-s="-1"/>`;
     }
     if (!stacked) c.series.forEach((se, si) => {
       const x = barX(ci, si), v = se.mean; if (!isFinite(v)) return;
@@ -3233,24 +3309,33 @@ function prismSVG(M, W, H, opts = {}) {
         o += `<circle cx="${f(cx + off)}" cy="${f(Y(p.v))}" r="${f(2.6 * u)}" fill="${pts === "open" ? "#fff" : "#000"}" stroke="#000" stroke-width="${f(lw * 0.9)}"/>`;
       });
     });
-    const cx = ml + band * ci + band / 2;
-    o += rot
+    const cx = ml + SL.cx[ci];
+    labs += rot
       ? `<text transform="translate(${f(cx + fs * 0.3)} ${f(mt + ph + fs * 0.9)}) rotate(-45)" font-size="${f(fs)}" text-anchor="end" fill="#000" data-rename="cond|${ci}">${esc(c.cond)}</text>`
       : `<text x="${f(cx)}" y="${f(mt + ph + fs * 1.45)}" font-size="${f(fs)}" text-anchor="middle" fill="#000" data-rename="cond|${ci}">${esc(c.cond)}</text>`;
   });
+  o += `</g>` + labs;
+  // group labels under the condition labels when several groups are shown
+  if (M.multi) {
+    const yl = mt + ph + labA - fs * 0.35;
+    for (const sp of SL.spans) {
+      const x1 = ml + sp.x1 + band * 0.08, x2 = ml + sp.x2 - band * 0.08;
+      o += `<path d="M${f(x1)} ${f(yl)}H${f(x2)}" stroke="#000" stroke-width="${f(lw * 1.1)}" fill="none"/>`;
+      o += `<text x="${f((x1 + x2) / 2)}" y="${f(yl + fs * 1.25)}" font-size="${f(fs * 1.05)}" font-weight="700" text-anchor="middle" fill="#000">${esc(sp.g)}</text>`;
+    }
+  }
   // significance
   const topOf = (ci, si) => { const se = cells[ci].series[si]; return Math.max((se.mean || 0) + errOf(se), ...(b.dots ? se.vals : [0])); };
   if (sigMode === "bracket" && comps.length) {
-    let yv = ymax * 1.06;
-    const gap = sigGap;
-    comps.sort((a, c) => Math.abs(a.ci - refIdx) - Math.abs(c.ci - refIdx) || a.si - c.si);
-    for (const cp of comps) {
-      const x1 = barX(refIdx, cp.si) + bw / 2, x2 = barX(cp.ci, cp.si) + bw / 2; const y = Y(yv); const dt = 4 * u;
+    const gap = sigGap; const byG = {};
+    for (const cp of comps) (byG[cp.g] = byG[cp.g] || []).push(cp);
+    for (const g of Object.keys(byG)) { let yv = ymax * 1.06; byG[g].sort((a, c) => Math.abs(a.ci - a.rci) - Math.abs(c.ci - c.rci) || a.si - c.si); for (const cp of byG[g]) {
+      const x1 = barX(cp.rci, cp.si) + bw / 2, x2 = barX(cp.ci, cp.si) + bw / 2; const y = Y(yv); const dt = 4 * u;
       o += `<path d="M${f(x1)} ${f(y + dt)}V${f(y)}H${f(x2)}V${f(y + dt)}" stroke="#000" stroke-width="${f(lw * 1.1)}" fill="none"/>`;
       const st = stars(cp.p);
       o += `<text x="${f((x1 + x2) / 2)}" y="${f(y - 2.5 * u)}" font-size="${f(st === "ns" ? fs * 0.9 : fs * 1.15)}" text-anchor="middle" fill="#000">${st}</text>`;
       yv += gap;
-    }
+    } }
   } else if (sigMode === "stars" && !stacked) {
     for (const cp of comps) { const x = barX(cp.ci, cp.si) + bw / 2; const st = stars(cp.p); o += `<text x="${f(x)}" y="${f(Y(topOf(cp.ci, cp.si)) - 5 * u)}" font-size="${f(st === "ns" ? fs * 0.85 : fs * 1.15)}" text-anchor="middle" fill="#000">${st}</text>`; }
   }
@@ -3275,7 +3360,7 @@ function prismSVG(M, W, H, opts = {}) {
     o += `</g>`;
   }
   o = o.replace("<svg ", `<svg data-plot="${f(ml)},${f(mt)},${f(pw)},${f(ph)}" `);
-  if (comps.length) o += `<text x="${f(W - 4 * u)}" y="${f(H - 3 * u)}" font-size="${f(Math.max(4, fs * 0.72))}" fill="#555" text-anchor="end">vs ${esc(b.ref)} · Welch t-test</text>`;
+  if (comps.length) o += `<text x="${f(W - 4 * u)}" y="${f(H - 3 * u)}" font-size="${f(Math.max(4, fs * 0.72))}" fill="#555" text-anchor="end">vs ${esc(b.ref)}${M.multi ? " within each group" : ""} · Welch t-test</text>`;
   return o + "</svg>";
 }
 
@@ -3325,7 +3410,7 @@ async function loadFiles(fileList) {
   for (const g of groups) { const r = initGroupGates(rep, g); if (r) info.push(`${g}: 앵커 ${r.anchor.name}${r.fromRep ? ` (${r.fromRep} gate에서 시작)` : ""}`); }
   if (added.length) {
     const first = added.find((s) => !isAnchor(s)) || added[0]; S.ui.cur = first.id; S.ui.sel = new Set([first.id]);
-    S.bar.group = null; S.bar.gid = null;
+    S.bar.group = null; S.bar.groups = null; S.bar.gid = null;
   }
   fullRender();
   if (errors.length) toast(`${added.length}개 불러옴 · ${errors.length}개 실패: ${errors[0]}`);

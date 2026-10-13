@@ -3,8 +3,8 @@ message: "If you use this software, please cite it using the metadata below."
 title: "Anchorgating"
 abstract: "A single-file, browser-based tool for FACS gating and figure generation (FCS 2.0/3.x). All data are processed locally in the browser. Pre-validation release: not yet compared against FlowJo."
 type: software
-version: 0.9.3
-date-released: 2026-10-06
+version: 0.9.4
+date-released: 2026-10-13
 license: MIT
 repository-code: "https://github.com/SMCHO-SSJ/anchorgating"
 url: "https://smcho-ssj.github.io/anchorgating/"
